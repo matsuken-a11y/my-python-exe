@@ -173,7 +173,7 @@ class App:
                         dt = datetime.strptime(val_str, "%Y%m%d")
                         df_dest.at[idx, 8] = dt.strftime("%Y/%m/%d 23:59")
                         # 🕒 H列(徴収開始日)のフォーマットを「秒」単位まで表示するように修正しました
-                        df_dest.at[idx, 7] = (dt - relativedelta(months=abs(offset_val)*2)).strftime("%Y/%m/%d %H:%M:01")
+                        df_dest.at[idx, 7] = (dt - relativedelta(months=abs(offset_val)*2)).strftime("%Y/%m/%d %H:00:01")
                         df_dest.at[idx, 9] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")
                     else:
                         df_dest.at[idx, 8] = df_dest.at[idx, 7] = df_dest.at[idx, 9] = ""
