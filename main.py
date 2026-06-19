@@ -45,7 +45,7 @@ COLLECTION_HEADERS = [
     "明細コード10", "明細金額10"
 ]
 
-# ② 分納情報変換用の専用ヘッダー定義（分納回数が追加された形式）
+# ② 分納情報変換用の専用ヘッダー定義
 INSTALLMENT_HEADERS = [
     "学籍番号", "年度", "徴収種別コード", "徴収名目コード", "分納回数", "説明文", "説明文（英字）", 
     "徴収金額", "徴収開始日", "徴収期限", "表示期限", "整理番号", 
@@ -54,6 +54,12 @@ INSTALLMENT_HEADERS = [
     "明細コード4", "明細金額4", "明細コード5", "明細金額5", "明細コード6", "明細金額6", 
     "明細コード7", "明細金額7", "明細コード8", "明細金額8", "明細コード9", "明細金額9", 
     "明細コード10", "明細金額10"
+]
+
+# ③ 新規・学年変換用のヘッダー定義 (学生マスタ用フォーマット)
+STUDENT_HEADERS = [
+    "学籍番号", "氏名", "カナ氏名", "生年月日", "所属", "学年", "在籍状態", "紐づけキー",
+    "学費支払者\nユーザーID", "ログイン\nユーザーID", "パスワード", "メールアドレス"
 ]
 
 class App:
@@ -129,7 +135,7 @@ class App:
         self.run_btn.pack(fill="both", expand=True, padx=2, pady=2, ipady=8)
 
     def change_tab(self, selected_tab):
-        if selected_tab in ["徴収情報変換", "確認用出力", "分納情報変換"]:
+        if selected_tab in ["新規・学年変換", "確認用出力", "徴収情報変換", "分納情報変換"]:
             self.current_tab = selected_tab
             for tab_name, btn in self.tab_buttons.items():
                 if tab_name == selected_tab:
@@ -141,8 +147,6 @@ class App:
                 self.group2_label.configure(text="2. 確認用ファイル生成")
             else:
                 self.group2_label.configure(text="2. アップロード用ファイル生成")
-        else:
-            messagebox.showinfo("ご案内", f"「{selected_tab}」機能は現在システム準備中です。\nデータ変換は「徴収情報変換」「確認用出力」「分納情報変換」のいずれかで行ってください。")
 
     def draw_canvas_border(self):
         self.drop_canvas.delete("border")
@@ -177,6 +181,8 @@ class App:
             self.process_verification_data()
         elif self.current_tab == "分納情報変換":
             self.process_installment_data()
+        elif self.current_tab == "新規・学年変換":
+            self.process_student_data()
 
     # --- 共通の共通データ出力処理 (xlsxwriterによる型固定) ---
     def save_converted_excel(self, df_final, save_path, string_cols, date_cols, headers_list):
@@ -186,6 +192,7 @@ class App:
             worksheet = writer.sheets['Sheet1']
             string_format = workbook.add_format({'num_format': '@'})
             datetime_format = workbook.add_format({'num_format': 'yyyy/mm/dd hh:mm:ss'})
+            simple_date_format = workbook.add_format({'num_format': 'yyyy/mm/dd'})
             
             # 文字列型のセル書式書き込み
             for col_name in string_cols:
@@ -201,13 +208,15 @@ class App:
                     col_idx = headers_list.index(col_name)
                     for row_idx in range(1, len(df_final) + 1):
                         val = df_final.iloc[row_idx - 1][col_name]
-                        if pd.notna(val): worksheet.write_datetime(row_idx, col_idx, val, datetime_format)
+                        if pd.notna(val):
+                            # 「生年月日」は時間なしの日付フォーマット、それ以外は秒付き
+                            fmt = simple_date_format if col_name == "生年月日" else datetime_format
+                            worksheet.write_datetime(row_idx, col_idx, val, fmt)
 
     # --- 共通の明細費目・金額展開ロジック (AA列以降) ---
     def populate_item_details(self, df_src, df_dest, headers_src, target_start_idx):
-        # target_start_idx: 徴収情報なら16, 分納情報なら17 (分納回数が入ったため1つズレる)
-        target_cols = [target_start_idx + i*2 for i in range(10)] # 明細コード1〜10の位置
-        amt_cols = [target_start_idx + 1 + i*2 for i in range(10)] # 明細金額1〜10の位置
+        target_cols = [target_start_idx + i*2 for i in range(10)]
+        amt_cols = [target_start_idx + 1 + i*2 for i in range(10)]
 
         for idx in range(1, len(df_src)):
             current_col_idx = 0
@@ -360,21 +369,17 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    # 3. 分納情報変換ロジック (分納専用の新ヘッダーレイアウトに完全準拠)
+    # 3. 分納情報変換ロジック
     def process_installment_data(self):
         try:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # 出力データフレームの初期化 (分納ヘッダー用に37列で初期化)
             df_dest = pd.DataFrame(None, index=range(len(df_src)), columns=range(37))
-            
-            # 元データからの列マッピング処理 (分納回数が挿入された新レイアウトに基づく)
-            df_dest[0] = df_src[0]  # A列 ➔ A列 (学籍番号)
-            if len(df_src.columns) > 13: df_dest[1] = df_src[13]  # N列 ➔ B列 (年度)
-            df_dest[2] = "01"  # C列は固定で "01" (徴収種別コード)
+            df_dest[0] = df_src[0]
+            if len(df_src.columns) > 13: df_dest[1] = df_src[13]
+            df_dest[2] = "01"
 
-            # O列 ➔ D列(徴収名目コード)、E列(分納回数) の条件分岐処理
             if len(df_src.columns) > 14:
                 for idx in range(1, len(df_src)):
                     val_o = str(df_src.iat[idx, 14]).split('.')[0].strip()
@@ -393,34 +398,28 @@ class App:
                         elif val_o == "33": df_dest.iat[idx, 4] = "04"
                         elif val_o == "34": df_dest.iat[idx, 4] = "05"
 
-            # P列 ➔ G列 (徴収金額) 【★分納レイアウトに基づき7番目(G列)へセット】
             if len(df_src.columns) > 15: df_dest[7] = df_src[15]
 
-            # Q列の日付処理 ➔ I列(徴収期限)・J列(表示期限) 【★分納レイアウトに基づき9番目と10番目へセット】
             date_cols_to_format = []
             if len(df_src.columns) > 16:
                 for idx, val in df_src[16].items():
                     val_str = str(val).split('.')[0].strip()
                     if val_str.isdigit() and len(val_str) == 8:
                         dt = datetime.strptime(val_str, "%Y%m%d")
-                        
-                        df_dest.at[idx, 9] = dt.strftime("%Y/%m/%d 23:59")  # 徴収期限 (I列/9番目)
-                        df_dest.at[idx, 8] = None                            # 徴収開始日 (H列/8番目)
-                        df_dest.at[idx, 10] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59") # 表示期限 (J列/10番目)
+                        df_dest.at[idx, 9] = dt.strftime("%Y/%m/%d 23:59")
+                        df_dest.at[idx, 8] = None
+                        df_dest.at[idx, 10] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")
                     else:
                         df_dest.at[idx, 9] = df_dest.at[idx, 8] = df_dest.at[idx, 10] = None
 
-            # 学籍番号の頭に"000"を付与して L列 (整理番号) へ 【★分納レイアウトに基づき11番目(L列)へセット】
             df_dest[11] = df_dest[0].astype(str).map(lambda x: f"000{x.split('.')[0]}" if x and x != "nan" else None)
 
-            # 費目・金額を明細コードへ展開 【★分納用位置(17)から展開スタート】
             headers_src = df_src.iloc[0].tolist()
             self.populate_item_details(df_src, df_dest, headers_src, 17)
 
             df_final = df_dest.iloc[1:].copy()
             df_final.columns = INSTALLMENT_HEADERS
 
-            # 空白金額を0で補完
             for i in range(1, 11):
                 code_col = f"明細コード{i}"
                 amt_col = f"明細金額{i}"
@@ -428,7 +427,6 @@ class App:
                     mask = df_final[code_col].notna() & (df_final[code_col].astype(str).str.strip() != "") & (df_final[amt_col].isna() | (df_final[amt_col].astype(str).str.strip() == ""))
                     df_final.loc[mask, amt_col] = 0
 
-            # 数値列・文字列列のクリーニング
             numeric_cols = ["学籍番号", "年度", "徴収金額"] + [f"明細金額{i}" for i in range(1, 11)]
             for col in numeric_cols:
                 df_final[col] = pd.to_numeric(df_final[col].astype(str).str.strip(), errors='coerce')
@@ -442,6 +440,91 @@ class App:
 
             self.save_converted_excel(df_final, save_path, string_cols, date_cols_to_format, INSTALLMENT_HEADERS)
             messagebox.showinfo("保存完了", f"分納情報アップロード用ファイルの生成が完了しました！\n\n{os.path.basename(save_path)}")
+        except Exception as e:
+            messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
+
+    # 4. 新規・学年変換ロジック (学生マスタ一括更新用マクロ完全再現版)
+    def process_student_data(self):
+        try:
+            df_src = self.load_source_file()
+            if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
+
+            # マクロ通り、元データのA2〜I列の最終行までの構造をコピー
+            # 必要な1行目をカットし、データのみを抽出
+            df_data = df_src.iloc[1:, 0:9].copy()
+            
+            # 各列に分かりやすく仮の見出しを割り振る
+            df_data.columns = ["学籍番号", "氏名", "カナ氏名", "生年月日", "所属", "学年", "在籍状態", "紐づけキー", "ログインユーザーID"]
+
+            # 🛠️ 【事前ガード処理】デモ用の学生・生徒データの自動削除ロジック
+            # ① 学籍番号の先頭3文字が "999" で始まる行を削除
+            df_data = df_data[~df_data["学籍番号"].astype(str).str.startswith("999")]
+            # ② 氏名が "専門 太郎" の行を削除
+            df_data = df_data[df_data["氏名"].astype(str).str.strip() != "専門 太郎"]
+
+            # リセット後にデータ処理を正確に行うためのインデックス再付与
+            df_data.reset_index(drop=True, inplace=True)
+
+            # 残りの3列(支払者ID, パスワード, メール)をNoneで追加して12列にする
+            df_data["学費支払者\nユーザーID"] = None
+            df_data["パスワード"] = None
+            df_data["メールアドレス"] = None
+
+            # 各行の変換処理を安全・確実にループ実行
+            for idx in range(len(df_data)):
+                # ① 生年月日（D列）の日付変換ロジック
+                b_val = str(df_data.at[idx, "生年月日"]).split('.')[0].strip()
+                if b_val.isdigit() and len(b_val) == 8:
+                    df_data.at[idx, "生年月日"] = datetime.strptime(b_val, "%Y%m%d")
+                else:
+                    df_data.at[idx, "生年月日"] = None
+
+                # ② 学年（F列）の0落ち修正（例: 1 ➔ "01"）
+                g_val = str(df_data.at[idx, "学年"]).split('.')[0].strip()
+                if g_val.isdigit() and g_val != "":
+                    df_data.at[idx, "学年"] = f"{int(g_val):02d}"
+
+                # ③ 在籍状態（G列）の値をすべて一括して "0" に上書き
+                df_data.at[idx, "in_status"] = "0"
+
+                # ④ 【確認いただいた重要ロジック】紐づけキーのコピーと7桁0埋め
+                h_val = str(df_data.at[idx, "紐づけキー"]).split('.')[0].strip()
+                i_val = str(df_data.at[idx, "ログインユーザーID"]).split('.')[0].strip()
+
+                # nanや空欄、Noneという文字列になっていないか厳密に確認
+                is_h_empty = (h_val == "" or h_val == "nan" or h_val == "None")
+                is_i_valid = (i_val != "" and i_val != "nan" and i_val != "None")
+
+                # 保証人がいない（紐づけキーが空）場合は、学生本人のID(I列)の値をH列にコピー
+                if is_h_empty and is_i_valid:
+                    final_key_val = i_val
+                else:
+                    final_key_val = h_val
+
+                # 最終的な値を7桁の頭0埋め（例: "0012345"）に成形して「学費支払者ユーザーID(H列の宛先)」へ代入
+                if final_key_val.isdigit():
+                    df_data.at[idx, "学費支払者\nユーザーID"] = f"{int(final_key_val):07d}"
+                else:
+                    df_data.at[idx, "学費支払者\nユーザーID"] = None
+
+            # ⑤ 在籍状態の列の入れ替え、およびマクロ指示通りI列以降の「ログインID」等の列を完全白紙クリア
+            df_data["在籍状態"] = "0"
+            df_data["ログイン\nユーザーID"] = None
+
+            # edufee指定の12列フォーマットに列順をガチッと再構成
+            df_final = df_data[STUDENT_HEADERS].copy()
+
+            # 文字列として出力固定する列の定義
+            string_cols = ["学籍番号", "学年", "在籍状態", "学費支払者\nユーザーID", "ログイン\nユーザーID", "パスワード", "メールアドレス"]
+            date_cols_to_format = ["生年月日"]
+
+            # 保存画面の起動
+            save_path = self.get_save_path("_学生情報データ")
+            if not save_path: return
+
+            # xlsxwriterによる完全書き出し（生年月日は時間なしのyyyy/mm/dd型）
+            self.save_converted_excel(df_final, save_path, string_cols, date_cols_to_format, STUDENT_HEADERS)
+            messagebox.showinfo("保存完了", f"学生マスタ更新用ファイルの生成が完了しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
