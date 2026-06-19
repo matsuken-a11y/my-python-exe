@@ -22,14 +22,14 @@ CONVERSION_MAP = {
     "ﾜｲﾝｺｰﾃﾞｨﾈｰﾄ論実習Ⅰ": "28", "介護食士3級申請料等": "29", "健康診断・細菌検査費": "30",
     "卒業関係経費": "31", "校外調理研修費": "32", "校外製菓研修費": "33", "専門調理学実習(科)": "34",
     "保険料": "35", "応用調理学実習(養)": "36", "学用品費": "37", "食文化調理学実習Ⅱ": "38",
-    "外食ﾒﾆｭｰ開発実習": "39", "ｶﾌｪﾚｽﾄﾗﾝ実習": "40", "ﾜｲﾝｺｰﾃﾞｨﾈｰﾄ論実習": "41",
+    "外食ﾒﾆｭｰ開発実習": "39", "ｶﾌｪﾚｽﾄﾗﾝ実習": "40", "ﾌｰﾄﾞｺｰ添えディネート論実習": "41",
     "ﾜｲﾝｺｰﾃﾞｨﾈｰﾄ論実習Ⅱ": "42", "香友会入会費": "43", "専門調理実習(短)": "44",
     "奨学費": "45", "横巻のぶ奨学金": "46", "AL特待生": "47", "学生会会費": "48",
     "受講料(履修証明プログラム)": "56", "授業料特別減免措置": "57", "大学院修士課程特別奨学生": "58",
     "香川調理製菓専門学校特待生": "59", "栄大スカラシップ制度": "60", "北郁子奨学基金奨学金": "61",
     "浅野嘉久賞奨学金": "62", "香川綾・芳子奨励賞": "63", "岡本萌実記念奨学金": "64",
     "野口医学研究所奨学金": "65", "荒井慶子ｸﾞﾛｰﾊﾞﾙ人材育成奨学金": "66", "私費外国人留学生奨学金制度": "67",
-    "食育ｲﾝｽﾄﾗｸﾀｰ受験料等": "77", "日本語学校費用": "78", "教職員子女減免": "81",
+    "食育ｲﾝｽﾄラクタ―受験料等": "77", "日本語学校費用": "78", "教職員子女減免": "81",
     "修学支援新制度": "83", "保護者会費": "85", "研修親睦・入卒費": "88",
     "資格申請・受験・検定費": "89", "預り金": "90", "仮受金収入": "91"
 }
@@ -169,14 +169,13 @@ class App:
             if len(df_src.columns) > 16:
                 for idx, val in df_src[16].items():
                     val_str = str(val).split('.')[0].strip()
-                    # 🛠️ 【インデント修正】位置を正しく揃えました
                     if val_str.isdigit() and len(val_str) == 8:
                         dt = datetime.strptime(val_str, "%Y%m%d")
                         df_dest.at[idx, 8] = dt.strftime("%Y/%m/%d 23:59")
                         
-                        # 📅 【日付型に完全変換】Excelが最初から「右寄り」の日付データとして解釈するようにします
+                        # 📅 【重要修正】日付型を維持しつつ、時間情報（00:00:00）を持たせたオブジェクトとして代入します
                         calc_dt = dt - relativedelta(months=abs(offset_val)*2)
-                        df_dest.at[idx, 7] = calc_dt.date()  # 時分秒を含まない純粋な日付オブジェクト
+                        df_dest.at[idx, 7] = pd.Timestamp(calc_dt)  # 最初から右寄りで、中身は時間を含むデータ
                         
                         df_dest.at[idx, 9] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")
                     else:
@@ -252,12 +251,12 @@ class App:
                             cell = worksheet.cell(row=row, column=col_idx)
                             cell.number_format = '@'
 
-                # 📅 徴収開始日(H列)を「日付(yyyy/mm/dd)」の書式に完全固定（最初から右寄りになります）
+                # 📅 徴収開始日(H列)を「日付(yyyy/mm/dd hh:mm:ss)」の書式に完全固定（時間データ持ち、最初から右寄りになります）
                 if "徴収開始日" in excel_headers:
                     h_col_idx = excel_headers.index("徴収開始日") + 1
                     for row in range(2, worksheet.max_row + 1):
                         cell = worksheet.cell(row=row, column=h_col_idx)
-                        cell.number_format = 'yyyy/mm/dd'
+                        cell.number_format = 'yyyy/mm/dd hh:mm:ss'
 
             messagebox.showinfo("保存完了", f"ファイルを保存しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
