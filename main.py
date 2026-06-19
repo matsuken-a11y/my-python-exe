@@ -22,7 +22,7 @@ CONVERSION_MAP = {
     "ﾜｲﾝｺｰﾃﾞｨﾈｰﾄ論実習Ⅰ": "28", "介護食士3級申請料等": "29", "健康診断・細菌検査費": "30",
     "卒業関係経費": "31", "校外調理研修費": "32", "校外製菓研修費": "33", "専門調理学実習(科)": "34",
     "保険料": "35", "応用調理学実習(養)": "36", "学用品費": "37", "食文化調理学実習Ⅱ": "38",
-    "外食ﾒﾆｭｰ開発実習": "39", "ｶﾌｪﾚｽﾄﾗﾝ実習": "40", "ﾌｰﾄﾞｺｰ添えディネート論実習": "41",
+    "外食ﾒﾆｭｰ開発実習": "39", "ｶﾌｪﾚｽﾄﾗﾝ実習": "40", "ﾌｰﾄﾞｺｰﾃﾞｨﾈｰﾄ論実習": "41",
     "ﾜｲﾝｺｰﾃﾞｨﾈｰﾄ論実習Ⅱ": "42", "香友会入会費": "43", "専門調理実習(短)": "44",
     "奨学費": "45", "横巻のぶ奨学金": "46", "AL特待生": "47", "学生会会費": "48",
     "受講料(履修証明プログラム)": "56", "授業料特別減免措置": "57", "大学院修士課程特別奨学生": "58",
@@ -154,7 +154,8 @@ class App:
 
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            df_dest = pd.DataFrame("", index=range(len(df_src)), columns=range(36))
+            # 🛠️ 【完全空白化対策】初期値を空文字ではなく None (完全な空白セル) に設定
+            df_dest = pd.DataFrame(None, index=range(len(df_src)), columns=range(36))
             df_dest[0] = df_src[0]
             if len(df_src.columns) > 13: df_dest[1] = df_src[13]
             df_dest[2] = "01"
@@ -173,15 +174,16 @@ class App:
                         dt = datetime.strptime(val_str, "%Y%m%d")
                         df_dest.at[idx, 8] = dt.strftime("%Y/%m/%d 23:59")
                         
-                        # 📅 【重要修正】日付型を維持しつつ、時間情報（00:00:00）を持たせたオブジェクトとして代入します
                         calc_dt = dt - relativedelta(months=abs(offset_val)*2)
-                        df_dest.at[idx, 7] = pd.Timestamp(calc_dt)  # 最初から右寄りで、中身は時間を含むデータ
+                        df_dest.at[idx, 7] = pd.Timestamp(calc_dt)
                         
                         df_dest.at[idx, 9] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")
                     else:
-                        df_dest.at[idx, 8] = df_dest.at[idx, 7] = df_dest.at[idx, 9] = ""
+                        # 🛠️ エラー、または空白の時は None で初期化
+                        df_dest.at[idx, 8] = df_dest.at[idx, 7] = df_dest.at[idx, 9] = None
 
-            df_dest[10] = df_dest[0].astype(str).map(lambda x: f"000{x.split('.')[0]}" if x and x != "nan" else "")
+            # 整理番号(K列)の設定
+            df_dest[10] = df_dest[0].astype(str).map(lambda x: f"000{x.split('.')[0]}" if x and x != "nan" else None)
 
             headers_src = df_src.iloc[0].tolist()
             target_cols = [17, 19, 21, 23, 25, 27, 29, 31, 33, 35]
@@ -213,15 +215,15 @@ class App:
             df_final = df_dest.iloc[1:].copy()
             df_final.columns = excel_headers
 
-            # 📊 ご指定の列を数値型に変換
+            # 📊 数値型に変換（空のセルは自動で NaN / None になります）
             numeric_cols = ["学籍番号", "年度", "徴収金額", "明細金額1", "明細金額2", "明細金額3", "明細金額4", "明細金額5", "明細金額6", "明細金額7", "明細金額8", "明細金額9", "明細金額10"]
             for col in numeric_cols:
                 df_final[col] = pd.to_numeric(df_final[col].astype(str).str.strip(), errors='coerce')
 
-            # 🔒 コード類にプラスして「整理番号(K列)」も完全に文字列として固定
+            # 🔒 コード類を完全に文字列として固定。ただし空のセル（NaN/None）は文字列化せず生かす
             string_cols = ["整理番号", "徴収種別コード", "徴収名目コード", "明細コード1", "明細コード2", "明細コード3", "明細コード4", "明細コード5", "明細コード6", "明細コード7", "明細コード8", "明細コード9", "明細コード10"]
             for col in string_cols:
-                df_final[col] = df_final[col].astype(str).str.strip()
+                df_final[col] = df_final[col].map(lambda x: str(x).strip() if pd.notna(x) and str(x).strip() != "None" and str(x).strip() != "" else None)
 
             home_dir = os.path.expanduser("~")
             desktop_path = os.path.join(home_dir, "OneDrive", "デスクトップ")
@@ -243,20 +245,22 @@ class App:
                 workbook = writer.book
                 worksheet = writer.sheets['Sheet1']
                 
-                # コード類の列を「文字列(@)」に固定
+                # コード類の列を「文字列(@)」に固定（値があるセルのみ処理）
                 for col_name in string_cols:
                     if col_name in excel_headers:
                         col_idx = excel_headers.index(col_name) + 1
                         for row in range(2, worksheet.max_row + 1):
                             cell = worksheet.cell(row=row, column=col_idx)
-                            cell.number_format = '@'
+                            if cell.value is not None:
+                                cell.number_format = '@'
 
-                # 📅 徴収開始日(H列)を「日付(yyyy/mm/dd hh:mm:ss)」の書式に完全固定（時間データ持ち、最初から右寄りになります）
+                # 📅 徴収開始日(H列)の書式設定（値があるセルのみ処理）
                 if "徴収開始日" in excel_headers:
                     h_col_idx = excel_headers.index("徴収開始日") + 1
                     for row in range(2, worksheet.max_row + 1):
                         cell = worksheet.cell(row=row, column=h_col_idx)
-                        cell.number_format = 'yyyy/mm/dd hh:mm:ss'
+                        if cell.value is not None:
+                            cell.number_format = 'yyyy/mm/dd hh:mm:ss'
 
             messagebox.showinfo("保存完了", f"ファイルを保存しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
