@@ -234,19 +234,27 @@ class App:
             )
             if not save_path: return
 
-            # 🛠️ 指定した列にExcelの「文字列フォーマット（@）」を適用
+            # 🛠️ 指定した列にExcelの書式（文字列・日付）を適用
             with pd.ExcelWriter(save_path, engine='openpyxl') as writer:
                 df_final.to_excel(writer, index=False, header=True)
                 
                 workbook = writer.book
                 worksheet = writer.sheets['Sheet1']
                 
+            # コード類の列を「文字列(@)」に固定
                 for col_name in string_cols:
                     if col_name in excel_headers:
                         col_idx = excel_headers.index(col_name) + 1
                         for row in range(2, worksheet.max_row + 1):
                             cell = worksheet.cell(row=row, column=col_idx)
-                            cell.number_format = '@'  # Excelの「文字列」書式に固定
+                            cell.number_format = '@'
+
+             # 📅 徴収開始日(H列)を、ユーザー定義ではなく「日付(yyyy/mm/dd)」の書式に完全固定
+                if "徴収開始日" in excel_headers:
+                    h_col_idx = excel_headers.index("徴収開始日") + 1
+                    for row in range(2, worksheet.max_row + 1):
+                        cell = worksheet.cell(row=row, column=h_col_idx)
+                        cell.number_format = 'yyyy/mm/dd'  # 標準の日付書式を指定
 
             messagebox.showinfo("保存完了", f"ファイルを保存しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
