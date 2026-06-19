@@ -12,7 +12,7 @@ from tkinterdnd2 import TkinterDnD, DND_FILES
 ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
-# 費目変換マップ（徴収情報変換用）
+# 費目変換マップ（明細コード用：徴収情報・分納情報共通）
 CONVERSION_MAP = {
     "授業料": "01", "在籍料": "02", "抗体検査費": "04", "聴講料": "07", "入学金": "08",
     "登録料": "09", "実験実習教育研究費": "10", "調理学実習費": "13", "調理実習費 ": "14",
@@ -33,6 +33,17 @@ CONVERSION_MAP = {
     "修学支援新制度": "83", "保護者会費": "85", "研修親睦・入卒費": "88",
     "資格申請・受験・検定費": "89", "預り金": "90", "仮受金収入": "91"
 }
+
+# アップロードデータの基本ヘッダー定義
+EXCEL_HEADERS = [
+    "学籍番号", "年度", "徴収種別コード", "徴収名目コード", "説明文", "説明文（英字）", 
+    "徴収金額", "徴収開始日", "徴収期限", "表示期限", "整理番号", 
+    "システム連携用Key1", "システム連携用Key2", "システム連携用Key3", "システム連携用Key4", "システム連携用Key5", 
+    "明細コード1", "明細金額1", "明細コード2", "明細金額2", "明細コード3", "明細金額3", 
+    "明細コード4", "明細金額4", "明細コード5", "明細金額5", "明細コード6", "明細金額6", 
+    "明細コード7", "明細金額7", "明細コード8", "明細金額8", "明細コード9", "明細金額9", 
+    "明細コード10", "明細金額10"
+]
 
 class App:
     def __init__(self):
@@ -107,7 +118,7 @@ class App:
         self.run_btn.pack(fill="both", expand=True, padx=2, pady=2, ipady=8)
 
     def change_tab(self, selected_tab):
-        if selected_tab in ["徴収情報変換", "確認用出力"]:
+        if selected_tab in ["徴収情報変換", "確認用出力", "分納情報変換"]:
             self.current_tab = selected_tab
             for tab_name, btn in self.tab_buttons.items():
                 if tab_name == selected_tab:
@@ -115,13 +126,12 @@ class App:
                 else:
                     btn.configure(bg="#f0f0f0", fg="#000000", font=("メイリオ", 11, "normal"))
             
-            # ラベルテキストの動的切り替え
             if selected_tab == "確認用出力":
                 self.group2_label.configure(text="2. 確認用ファイル生成")
             else:
                 self.group2_label.configure(text="2. アップロード用ファイル生成")
         else:
-            messagebox.showinfo("ご案内", f"「{selected_tab}」機能は現在システム準備中です。\nデータ変換は「徴収情報変換」または「確認用出力」タブで行ってください。")
+            messagebox.showinfo("ご案内", f"「{selected_tab}」機能は現在システム準備中です。\nデータ変換は「徴収情報変換」「確認用出力」「分納情報変換」のいずれかで行ってください。")
 
     def draw_canvas_border(self):
         self.drop_canvas.delete("border")
@@ -150,11 +160,55 @@ class App:
             messagebox.showwarning("警告", "ファイルを選択してください。")
             return
         
-        # タブの状態に応じて呼び出すロジックを分岐
         if self.current_tab == "徴収情報変換":
             self.process_collection_data()
         elif self.current_tab == "確認用出力":
             self.process_verification_data()
+        elif self.current_tab == "分納情報変換":
+            self.process_installment_data()
+
+    # --- 共通の共通データ出力処理 (xlsxwriterによる型固定) ---
+    def save_converted_excel(self, df_final, save_path, string_cols, date_cols=None):
+        if date_cols is None: date_cols = []
+        with pd.ExcelWriter(save_path, engine='xlsxwriter') as writer:
+            df_final.to_excel(writer, index=False, header=True)
+            workbook = writer.book
+            worksheet = writer.sheets['Sheet1']
+            string_format = workbook.add_format({'num_format': '@'})
+            datetime_format = workbook.add_format({'num_format': 'yyyy/mm/dd hh:mm'})
+            
+            # 文字列型のセル書式書き込み
+            for col_name in string_cols:
+                if col_name in EXCEL_HEADERS:
+                    col_idx = EXCEL_HEADERS.index(col_name)
+                    for row_idx in range(1, len(df_final) + 1):
+                        val = df_final.iloc[row_idx - 1][col_name]
+                        if pd.notna(val): worksheet.write(row_idx, col_idx, str(val), string_format)
+
+            # 日付型のセル書式書き込み
+            for col_name in date_cols:
+                if col_name in EXCEL_HEADERS:
+                    col_idx = EXCEL_HEADERS.index(col_name)
+                    for row_idx in range(1, len(df_final) + 1):
+                        val = df_final.iloc[row_idx - 1][col_name]
+                        if pd.notna(val): worksheet.write_datetime(row_idx, col_idx, val, datetime_format)
+
+    # --- 共通の明細費目・金額展開ロジック (AA列以降) ---
+    def populate_item_details(self, df_src, df_dest, headers_src):
+        target_cols = [16, 18, 20, 22, 24, 26, 28, 30, 32, 34]  # 明細コード1〜10
+        amt_cols = [17, 19, 21, 23, 25, 27, 29, 31, 33, 35]     # 明細金額1〜10
+
+        for idx in range(1, len(df_src)):
+            current_col_idx = 0
+            for col_idx in range(26, min(90, len(df_src.columns))):
+                val = df_src.iat[idx, col_idx]
+                if pd.notna(val) and str(val).strip() != "":
+                    if current_col_idx < len(target_cols):
+                        df_dest.iat[idx, amt_cols[current_col_idx]] = val
+                        src_header_name = str(headers_src[col_idx]).strip()
+                        df_dest.iat[idx, target_cols[current_col_idx]] = CONVERSION_MAP.get(src_header_name, src_header_name)
+                        current_col_idx += 1
+            if current_col_idx >= len(target_cols): break
 
     # 1. 徴収情報変換（edufee用）ロジック
     def process_collection_data(self):
@@ -175,7 +229,9 @@ class App:
             
             if len(df_src.columns) > 15: df_dest[6] = df_src[15]
 
+            date_cols_to_format = []
             if len(df_src.columns) > 16:
+                date_cols_to_format.append("徴収開始日")
                 for idx, val in df_src[16].items():
                     val_str = str(val).split('.')[0].strip()
                     if val_str.isdigit() and len(val_str) == 8:
@@ -190,33 +246,10 @@ class App:
             df_dest[10] = df_dest[0].astype(str).map(lambda x: f"000{x.split('.')[0]}" if x and x != "nan" else None)
 
             headers_src = df_src.iloc[0].tolist()
-            target_cols = [17, 19, 21, 23, 25, 27, 29, 31, 33, 35]
-            header_cols = [16, 18, 20, 22, 24, 26, 28, 30, 32, 34]
-
-            for idx in range(1, len(df_src)):
-                current_col_idx = 0
-                for col_idx in range(26, min(90, len(df_src.columns))):
-                    val = df_src.iat[idx, col_idx]
-                    if pd.notna(val) and str(val).strip() != "":
-                        if current_col_idx < len(target_cols):
-                            df_dest.iat[idx, target_cols[current_col_idx]] = val
-                            src_header_name = str(headers_src[col_idx]).strip()
-                            df_dest.iat[idx, header_cols[current_col_idx]] = CONVERSION_MAP.get(src_header_name, src_header_name)
-                            current_col_idx += 1
-                if current_col_idx >= len(target_cols): break
-
-            excel_headers = [
-                "学籍番号", "年度", "徴収種別コード", "徴収名目コード", "説明文", "説明文（英字）", 
-                "徴収金額", "徴収開始日", "徴収期限", "表示期限", "整理番号", 
-                "システム連携用Key1", "システム連携用Key2", "システム連携用Key3", "システム連携用Key4", "システム連携用Key5", 
-                "明細コード1", "明細金額1", "明細コード2", "明細金額2", "明細コード3", "明細金額3", 
-                "明細コード4", "明細金額4", "明細コード5", "明細金額5", "明細コード6", "明細金額6", 
-                "明細コード7", "明細金額7", "明細コード8", "明細金額8", "明細コード9", "明細金額9", 
-                "明細コード10", "明細金額10"
-            ]
+            self.populate_item_details(df_src, df_dest, headers_src)
 
             df_final = df_dest.iloc[1:].copy()
-            df_final.columns = excel_headers
+            df_final.columns = EXCEL_HEADERS
 
             for i in range(1, 11):
                 code_col = f"明細コード{i}"
@@ -225,37 +258,18 @@ class App:
                     mask = df_final[code_col].notna() & (df_final[code_col].astype(str).str.strip() != "") & (df_final[amt_col].isna() | (df_final[amt_col].astype(str).str.strip() == ""))
                     df_final.loc[mask, amt_col] = 0
 
-            numeric_cols = ["学籍番号", "年度", "徴収金額", "明細金額1", "明細金額2", "明細金額3", "明細金額4", "明細金額5", "明細金額6", "明細金額7", "明細金額8", "明細金額9", "明細金額10"]
+            numeric_cols = ["学籍番号", "年度", "徴収金額"] + [f"明細金額{i}" for i in range(1, 11)]
             for col in numeric_cols:
                 df_final[col] = pd.to_numeric(df_final[col].astype(str).str.strip(), errors='coerce')
 
-            string_cols = ["整理番号", "徴収種別コード", "徴収名目コード", "明細コード1", "明細コード2", "明細コード3", "明細コード4", "明細コード5", "明細コード6", "明細コード7", "明細コード8", "明細コード9", "明細コード10"]
+            string_cols = ["整理番号", "徴収種別コード", "徴収名目コード"] + [f"明細コード{i}" for i in range(1, 11)]
             for col in string_cols:
                 df_final[col] = df_final[col].map(lambda x: str(x).strip() if pd.notna(x) and str(x).strip() != "None" and str(x).strip() != "" else None)
 
-            save_path = self.get_save_path("_データ")
+            save_path = self.get_save_path("_徴収情報データ")
             if not save_path: return
 
-            with pd.ExcelWriter(save_path, engine='xlsxwriter') as writer:
-                df_final.to_excel(writer, index=False, header=True)
-                workbook = writer.book
-                worksheet = writer.sheets['Sheet1']
-                string_format = workbook.add_format({'num_format': '@'})
-                datetime_format = workbook.add_format({'num_format': 'yyyy/mm/dd hh:mm:ss'})
-                
-                for col_name in string_cols:
-                    if col_name in excel_headers:
-                        col_idx = excel_headers.index(col_name)
-                        for row_idx in range(1, len(df_final) + 1):
-                            val = df_final.iloc[row_idx - 1][col_name]
-                            if pd.notna(val): worksheet.write(row_idx, col_idx, str(val), string_format)
-
-                if "徴収開始日" in excel_headers:
-                    h_col_idx = excel_headers.index("徴収開始日")
-                    for row_idx in range(1, len(df_final) + 1):
-                        val = df_final.iloc[row_idx - 1]["徴収開始日"]
-                        if pd.notna(val): worksheet.write_datetime(row_idx, h_col_idx, val, datetime_format)
-
+            self.save_converted_excel(df_final, save_path, string_cols, date_cols_to_format)
             messagebox.showinfo("保存完了", f"ファイルを保存しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
@@ -266,128 +280,156 @@ class App:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # 1行目をヘッダーとして設定
             df_src.columns = df_src.iloc[0]
             df_data = df_src.iloc[1:].copy()
 
-            # ① 2行目以降でW列（学生納付情報.消込日）が空白でない（値がある）行を削除
-            # インデックスによる指定安全策：W列は22番目（0始まり）
             clear_day_col = df_data.columns[22] 
             df_data = df_data[df_data[clear_day_col].isna() | (df_data[clear_day_col].astype(str).str.strip() == "")]
 
-            # ② AA列(26)からCJ列(87)までの空白列を自動削除するロジック
-            # まず、AA列以降の費目列のリストを取得
             fee_cols = list(df_data.columns[26:])
             active_fee_cols = []
             for col in fee_cols:
-                # 列が全て空欄、または0、または空文字列でないかチェック
                 series = df_data[col].dropna().astype(str).str.strip()
                 series = series[series != ""]
                 if not series.empty:
                     active_fee_cols.append(col)
 
-            # ③ 固定削除する列（アルファベット指定を列名にマッピング）
-            # マクロのdeleteCols = Array("Z", "Y", "X", "W", "V", "U", "T", "S", "N", "M", "L", "K", "J", "I", "G", "D", "B")
-            # 0始まりのインデックス: B(1), D(3), G(6), I(8), J(9), K(10), L(11), M(12), N(13), S(18), T(19), U(20), V(21), W(22), X(23), Y(24), Z(25)
             all_cols = list(df_src.columns)
             indices_to_delete = [1, 3, 6, 8, 9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23, 24, 25]
-            delete_names = [all_cols[i] for i in indices_to_delete if i < len(all_cols)]
             
-            # 残すべき基本情報列を抽出
-            # 残るのは：A(学籍番号), C(氏名), E(在学区分名称), F(所属コード), H(学年１) などのうち削除から外れたもの
             base_cols = [col for idx, col in enumerate(df_src.columns[:26]) if idx not in indices_to_delete]
-            
-            # 最終的に残す列をドッキング
             final_cols = base_cols + active_fee_cols
             df_result = df_data[final_cols].copy()
 
-            # ④ セルに指定の値を入力（ヘッダーの上書き）
-            # マクロの対応関係：C1="区分", E1="学年", F1="納付回数", G1="納付金額", H1="納期", I1="延納期限"
-            # 列追加・削除後の位置に合わせ、元ヘッダー名ベースで確実に置換
             rename_map = {
-                "在学区分名称": "区分",
-                "学年１": "学年",
-                "学生納付情報.納付回数": "納付回数",
-                "学生納付情報.納付金額": "納付金額",
-                "学生納付情報.納期": "納期",
-                "学生納付情報.延納期限": "延納期限"
+                "在学区分名称": "区分", "学年１": "学年", "学生納付情報.納付回数": "納付回数",
+                "学生納付情報.納付金額": "納付金額", "学生納付情報.納期": "納期", "学生納付情報.延納期限": "延納期限"
             }
             df_result.rename(columns=rename_map, inplace=True)
-
-            # ⑤ 独自の学生数集計：B列（学籍番号）の重複を除いた数をカウント
             unique_student_count = df_result["学籍番号"].nunique()
-
-            # ⑥ A列を追加して連番（No）を入力
             df_result.insert(0, "No", range(1, len(df_result) + 1))
 
-            # 保存用画面を起動
             save_path = self.get_save_path("_確認用出力")
             if not save_path: return
 
-            # ⑦ xlsxwriterによるデザインの適用（格子・水色ヘッダー・カンマ・幅調整）
             with pd.ExcelWriter(save_path, engine='xlsxwriter') as writer:
                 df_result.to_excel(writer, index=False, header=True)
-                
                 workbook = writer.book
                 worksheet = writer.sheets['Sheet1']
                 
-                # デザイン定義
-                header_format = workbook.add_format({
-                    'bg_color': '#E0FFFF',  # 薄い水色 (RGB: 224, 255, 255)
-                    'border': 1,
-                    'bold': True,
-                    'align': 'center',
-                    'valign': 'vcenter'
-                })
+                header_format = workbook.add_format({'bg_color': '#E0FFFF', 'border': 1, 'bold': True, 'align': 'center', 'valign': 'vcenter'})
                 data_format = workbook.add_format({'border': 1})
                 comma_format = workbook.add_format({'border': 1, 'num_format': '#,##0'})
                 string_format = workbook.add_format({'border': 1, 'num_format': '@'})
 
-                # 全セルに格子を追加しつつ書式適用
                 headers = list(df_result.columns)
                 for col_idx, col_name in enumerate(headers):
-                    # ヘッダーを水色に変更
                     worksheet.write(0, col_idx, col_name, header_format)
-                    
-                    # データの書き込みと書式化
                     for row_idx in range(1, len(df_result) + 1):
                         val = df_result.iloc[row_idx - 1][col_name]
-                        
-                        # 金額を扱う列はカンマ区切りにする (G列相当＝納付金額、および費目列)
                         if col_name == "納付金額" or col_name in active_fee_cols:
                             if pd.notna(val) and str(val).strip() != "":
-                                try:
-                                    worksheet.write_number(row_idx, col_idx, float(val), comma_format)
-                                except ValueError:
-                                    worksheet.write(row_idx, col_idx, val, data_format)
-                            else:
-                                worksheet.write(row_idx, col_idx, "", data_format)
-                        # 学籍番号などは文字列として固定
+                                try: worksheet.write_number(row_idx, col_idx, float(val), comma_format)
+                                except ValueError: worksheet.write(row_idx, col_idx, val, data_format)
+                            else: worksheet.write(row_idx, col_idx, "", data_format)
                         elif col_name == "学籍番号":
                             worksheet.write(row_idx, col_idx, str(val) if pd.notna(val) else "", string_format)
                         else:
-                            if pd.notna(val):
-                                worksheet.write(row_idx, col_idx, val, data_format)
-                            else:
-                                worksheet.write(row_idx, col_idx, "", data_format)
+                            worksheet.write(row_idx, col_idx, val if pd.notna(val) else "", data_format)
 
-                # 重複を除いた学生数を、C列の最終行の2行下に書き込み
-                # NoがA列(0), 学籍番号がB列(1), 氏名がC列(2)
                 summary_row = len(df_result) + 2
                 worksheet.write(summary_row, 2, unique_student_count, data_format)
 
-                # 列幅の自動調整 & J列(9)以降は幅12に固定
                 for col_idx, col_name in enumerate(headers):
-                    if col_idx >= 9:  # J列以降
-                        worksheet.set_column(col_idx, col_idx, 12)
+                    if col_idx >= 9: worksheet.set_column(col_idx, col_idx, 12)
                     else:
-                        max_len = max(
-                            df_result[col_name].astype(str).map(len).max() if not df_result.empty else 0,
-                            len(col_name)
-                        ) + 3
+                        max_len = max(df_result[col_name].astype(str).map(len).max() if not df_result.empty else 0, len(col_name)) + 3
                         worksheet.set_column(col_idx, col_idx, min(max_len, 30))
 
             messagebox.showinfo("保存完了", f"確認用出力ファイルの生成が完了しました！\n\n{os.path.basename(save_path)}")
+        except Exception as e:
+            messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
+
+    # 3. 分納情報変換ロジック (ご提示いただいたマクロを完全再現)
+    def process_installment_data(self):
+        try:
+            df_src = self.load_source_file()
+            if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
+
+            # 出力データフレームの初期化
+            df_dest = pd.DataFrame(None, index=range(len(df_src)), columns=range(36))
+            
+            # ① 元データからの列マッピング処理
+            df_dest[0] = df_src[0]  # A列 ➔ A列 (学籍番号)
+            if len(df_src.columns) > 13: df_dest[1] = df_src[13]  # N列 ➔ B列 (年度)
+            df_dest[2] = "01"  # C列は固定で "01"
+
+            # ② O列 ➔ D列(徴収名目)、E列(説明文) の条件分岐処理
+            if len(df_src.columns) > 14:
+                for idx in range(1, len(df_src)):
+                    val_o = str(df_src.iat[idx, 14]).split('.')[0].strip()
+                    if val_o in ["20", "21", "22", "23", "24"]:
+                        df_dest.iat[idx, 3] = "01"
+                        if val_o == "20": df_dest.iat[idx, 4] = "01"
+                        elif val_o == "21": df_dest.iat[idx, 4] = "02"
+                        elif val_o == "22": df_dest.iat[idx, 4] = "03"
+                        elif val_o == "23": df_dest.iat[idx, 4] = "04"
+                        elif val_o == "24": df_dest.iat[idx, 4] = "05"
+                    elif val_o in ["30", "31", "32", "33", "34"]:
+                        df_dest.iat[idx, 3] = "11"
+                        if val_o == "30": df_dest.iat[idx, 4] = "01"
+                        elif val_o == "31": df_dest.iat[idx, 4] = "02"
+                        elif val_o == "32": df_dest.iat[idx, 4] = "03"
+                        elif val_o == "33": df_dest.iat[idx, 4] = "04"
+                        elif val_o == "34": df_dest.iat[idx, 4] = "05"
+
+            # ③ P列 ➔ H列 (徴収金額)
+            if len(df_src.columns) > 15: df_dest[6] = df_src[15]
+
+            # ④ Q列の日付処理 ➔ J列(徴収期限)・K列(表示期限)
+            date_cols_to_format = []
+            if len(df_src.columns) > 16:
+                for idx, val in df_src[16].items():
+                    val_str = str(val).split('.')[0].strip()
+                    if val_str.isdigit() and len(val_str) == 8:
+                        dt = datetime.strptime(val_str, "%Y%m%d")
+                        df_dest.at[idx, 8] = dt.strftime("%Y/%m/%d 23:59")  # J列
+                        df_dest.at[idx, 9] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")  # K列
+                    else:
+                        df_dest.at[idx, 8] = df_dest.at[idx, 9] = None
+
+            # ⑤ 学籍番号の頭に"000"を付与して L列 (整理番号) へ
+            df_dest[10] = df_dest[0].astype(str).map(lambda x: f"000{x.split('.')[0]}" if x and x != "nan" else None)
+
+            # ⑥ 費目・金額を明細コード（Q列以降）へ展開
+            headers_src = df_src.iloc[0].tolist()
+            self.populate_item_details(df_src, df_dest, headers_src)
+
+            df_final = df_dest.iloc[1:].copy()
+            df_final.columns = EXCEL_HEADERS
+
+            # 空白金額を0で補完
+            for i in range(1, 11):
+                code_col = f"明細コード{i}"
+                amt_col = f"明細金額{i}"
+                if code_col in df_final.columns and amt_col in df_final.columns:
+                    mask = df_final[code_col].notna() & (df_final[code_col].astype(str).str.strip() != "") & (df_final[amt_col].isna() | (df_final[amt_col].astype(str).str.strip() == ""))
+                    df_final.loc[mask, amt_col] = 0
+
+            # 数値列・文字列列のクリーニング
+            numeric_cols = ["学籍番号", "年度", "徴収金額"] + [f"明細金額{i}" for i in range(1, 11)]
+            for col in numeric_cols:
+                df_final[col] = pd.to_numeric(df_final[col].astype(str).str.strip(), errors='coerce')
+
+            string_cols = ["整理番号", "徴収種別コード", "徴収名目コード", "説明文"] + [f"明細コード{i}" for i in range(1, 11)]
+            for col in string_cols:
+                df_final[col] = df_final[col].map(lambda x: str(x).strip() if pd.notna(x) and str(x).strip() != "None" and str(x).strip() != "" else None)
+
+            save_path = self.get_save_path("_分納情報データ")
+            if not save_path: return
+
+            self.save_converted_excel(df_final, save_path, string_cols, date_cols_to_format)
+            messagebox.showinfo("保存完了", f"分納情報アップロード用ファイルの生成が完了しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
