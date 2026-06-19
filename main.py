@@ -78,4 +78,194 @@ class App:
         self.icon_id = self.drop_canvas.create_window(340, 25, window=self.icon_label)
         
         self.text_id = self.drop_canvas.create_text(
-            340, 65,
+            340, 65, text="元データExcel / CSVファイルをここにドラッグ＆ドロップ\n(またはここをクリックしてファイルを選択)",
+            font=("メイリオ", 11, "bold"), fill="#333333", justify="center"
+        )
+        
+        self.drop_canvas.bind("<Button-1>", lambda e: self.browse_file())
+        self.drop_canvas.drop_target_register(DND_FILES)
+        self.drop_canvas.dnd_bind('<<Drop>>', self.handle_drop)
+
+        self.status_frame = tk.Frame(self.main_container, bg="#fbfbfb")
+        self.status_frame.pack(fill="x", pady=5)
+        
+        self.check_icon = tk.Label(self.status_frame, text="✔", font=("Arial", 12, "bold"), fg="#999999", bg="#fbfbfb")
+        self.check_icon.pack(side="left", padx=(5, 2))
+        
+        self.path_label = tk.Label(self.status_frame, text="警告: ファイルが選択されていません。", font=("メイリオ", 10), fg="#666666", bg="#fbfbfb")
+        self.path_label.pack(side="left")
+
+        # --- ③ 2. アップロード用ファイル生成エリア ---
+        self.group2_label = tk.Label(self.main_container, text="2. アップロード用ファイル生成", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
+        self.group2_label.pack(anchor="w", pady=(5, 5))
+
+        self.control_frame = tk.Frame(self.main_container, bg="#fbfbfb")
+        self.control_frame.pack(fill="x", pady=2)
+
+        self.run_btn = tk.Button(self.control_frame, text="📄   変換実行", font=("メイリオ", 13, "bold"), bg="#22863a", fg="#ffffff", relief="raised", bd=1, activebackground="#1b5e20", activeforeground="#ffffff", command=self.process_data)
+        self.run_btn.pack(fill="both", expand=True, padx=2, pady=2, ipady=8)
+
+    def change_tab(self, selected_tab):
+        for tab_name, btn in self.tab_buttons.items():
+            if tab_name == selected_tab:
+                btn.configure(bg="#0066cc", fg="#ffffff", font=("メイリオ", 11, "bold"))
+            else:
+                btn.configure(bg="#f0f0f0", fg="#000000", font=("メイリオ", 11, "normal"))
+        if selected_tab != "徴収情報変換":
+            messagebox.showinfo("ご案内", f"「{selected_tab}」機能は現在システム準備中です。\nデータ変換は「徴収情報変換」タブで行ってください。")
+            self.change_tab("徴収情報変換")
+
+    def draw_canvas_border(self):
+        self.drop_canvas.delete("border")
+        w = self.drop_canvas.winfo_width()
+        h = self.drop_canvas.winfo_height()
+        self.drop_canvas.create_rectangle(2, 2, w-2, h-2, dash=(4, 4), outline="#999999", width=1, tags="border")
+        self.drop_canvas.coords(self.icon_id, w/2, 25)
+        self.drop_canvas.coords(self.text_id, w/2, 65)
+
+    def browse_file(self):
+        file_path = filedialog.askopenfilename(filetypes=[("Excel/CSV Files", "*.xlsx *.xls *.csv")])
+        if file_path: self.set_file(file_path)
+
+    def handle_drop(self, event):
+        file_path = event.data.strip('{}')
+        self.set_file(file_path)
+
+    def set_file(self, path):
+        self.file_path = path
+        filename = os.path.basename(path)
+        self.path_label.configure(text=f"ファイルの読み込みが完了しました。 (ファイル名: {filename})", fg="#2ea44f")
+        self.check_icon.configure(text="✔", fg="#2ea44f")
+
+    def process_data(self):
+        if not self.file_path:
+            messagebox.showwarning("警告", "ファイルを選択してください。")
+            return
+        try:
+            offset_val = -1
+            df_src = None
+            try:
+                df_src = pd.read_csv(self.file_path, header=None, encoding="cp932")
+            except Exception:
+                try:
+                    df_src = pd.read_excel(self.file_path, header=None)
+                except Exception:
+                    df_src = pd.read_csv(self.file_path, header=None, encoding="utf-8")
+
+            if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
+
+            df_dest = pd.DataFrame("", index=range(len(df_src)), columns=range(36))
+            df_dest[0] = df_src[0]
+            if len(df_src.columns) > 13: df_dest[1] = df_src[13]
+            df_dest[2] = "01"
+            
+            if len(df_src.columns) > 14:
+                df_dest[3] = df_src[14].astype(str).str.replace(r'\.0$', '', regex=True)
+                val_map = {"1": "01", "3": "03", "11": "11", "8": "08"}
+                df_dest[3] = df_dest[3].map(lambda x: val_map.get(x, x))
+            
+            if len(df_src.columns) > 15: df_dest[6] = df_src[15]
+
+            if len(df_src.columns) > 16:
+                for idx, val in df_src[16].items():
+                    val_str = str(val).split('.')[0].strip()
+                    # 🛠️ 【インデント修正】位置を正しく揃えました
+                    if val_str.isdigit() and len(val_str) == 8:
+                        dt = datetime.strptime(val_str, "%Y%m%d")
+                        df_dest.at[idx, 8] = dt.strftime("%Y/%m/%d 23:59")
+                        
+                        # 📅 【日付型に完全変換】Excelが最初から「右寄り」の日付データとして解釈するようにします
+                        calc_dt = dt - relativedelta(months=abs(offset_val)*2)
+                        df_dest.at[idx, 7] = calc_dt.date()  # 時分秒を含まない純粋な日付オブジェクト
+                        
+                        df_dest.at[idx, 9] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")
+                    else:
+                        df_dest.at[idx, 8] = df_dest.at[idx, 7] = df_dest.at[idx, 9] = ""
+
+            df_dest[10] = df_dest[0].astype(str).map(lambda x: f"000{x.split('.')[0]}" if x and x != "nan" else "")
+
+            headers_src = df_src.iloc[0].tolist()
+            target_cols = [17, 19, 21, 23, 25, 27, 29, 31, 33, 35]
+            header_cols = [16, 18, 20, 22, 24, 26, 28, 30, 32, 34]
+
+            for idx in range(1, len(df_src)):
+                current_col_idx = 0
+                for col_idx in range(26, min(90, len(df_src.columns))):
+                    val = df_src.iat[idx, col_idx]
+                    if pd.notna(val) and str(val).strip() != "":
+                        if current_col_idx < len(target_cols):
+                            df_dest.iat[idx, target_cols[current_col_idx]] = val
+                            src_header_name = str(headers_src[col_idx]).strip()
+                            df_dest.iat[idx, header_cols[current_col_idx]] = CONVERSION_MAP.get(src_header_name, src_header_name)
+                            current_col_idx += 1
+                if current_col_idx >= len(target_cols): break
+
+            excel_headers = [
+                "学籍番号", "年度", "徴収種別コード", "徴収名目コード", "説明文", "説明文（英字）", 
+                "徴収金額", "徴収開始日", "徴収期限", "表示期限", "整理番号", 
+                "システム連携用Key1", "システム連携用Key2", "システム連携用Key3", "システム連携用Key4", "システム連携用Key5", 
+                "明細コード1", "明細金額1", "明細コード2", "明細金額2", "明細コード3", "明細金額3", 
+                "明細コード4", "明細金額4", "明細コード5", "明細金額5", "明細コード6", "明細金額6", 
+                "明細コード7", "明細金額7", "明細コード8", "明細金額8", "明細コード9", "明細金額9", 
+                "明細コード10", "明細金額10"
+            ]
+
+            # 不要な1行目をカットし、正規のヘッダーを設定
+            df_final = df_dest.iloc[1:].copy()
+            df_final.columns = excel_headers
+
+            # 📊 ご指定の列を数値型に変換
+            numeric_cols = ["学籍番号", "年度", "徴収金額", "明細金額1", "明細金額2", "明細金額3", "明細金額4", "明細金額5", "明細金額6", "明細金額7", "明細金額8", "明細金額9", "明細金額10"]
+            for col in numeric_cols:
+                df_final[col] = pd.to_numeric(df_final[col].astype(str).str.strip(), errors='coerce')
+
+            # 🔒 コード類にプラスして「整理番号(K列)」も完全に文字列として固定
+            string_cols = ["整理番号", "徴収種別コード", "徴収名目コード", "明細コード1", "明細コード2", "明細コード3", "明細コード4", "明細コード5", "明細コード6", "明細コード7", "明細コード8", "明細コード9", "明細コード10"]
+            for col in string_cols:
+                df_final[col] = df_final[col].astype(str).str.strip()
+
+            home_dir = os.path.expanduser("~")
+            desktop_path = os.path.join(home_dir, "OneDrive", "デスクトップ")
+            if not os.path.exists(desktop_path): desktop_path = os.path.join(home_dir, "Desktop")
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"{timestamp}_データ.xlsx"
+            
+            save_path = filedialog.asksaveasfilename(
+                initialdir=desktop_path, initialfile=default_filename,
+                defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")]
+            )
+            if not save_path: return
+
+            # 🛠️ 指定した列にExcelの書式（文字列・日付）を適用
+            with pd.ExcelWriter(save_path, engine='openpyxl') as writer:
+                df_final.to_excel(writer, index=False, header=True)
+                
+                workbook = writer.book
+                worksheet = writer.sheets['Sheet1']
+                
+                # コード類の列を「文字列(@)」に固定
+                for col_name in string_cols:
+                    if col_name in excel_headers:
+                        col_idx = excel_headers.index(col_name) + 1
+                        for row in range(2, worksheet.max_row + 1):
+                            cell = worksheet.cell(row=row, column=col_idx)
+                            cell.number_format = '@'
+
+                # 📅 徴収開始日(H列)を「日付(yyyy/mm/dd)」の書式に完全固定（最初から右寄りになります）
+                if "徴収開始日" in excel_headers:
+                    h_col_idx = excel_headers.index("徴収開始日") + 1
+                    for row in range(2, worksheet.max_row + 1):
+                        cell = worksheet.cell(row=row, column=h_col_idx)
+                        cell.number_format = 'yyyy/mm/dd'
+
+            messagebox.showinfo("保存完了", f"ファイルを保存しました！\n\n{os.path.basename(save_path)}")
+        except Exception as e:
+            messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
+
+    def run(self):
+        self.root.mainloop()
+
+if __name__ == "__main__":
+    app = App()
+    app.run()
