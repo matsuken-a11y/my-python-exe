@@ -21,11 +21,11 @@ jobs:
     - name: 必要なライブラリとPyInstallerのインストール
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller pandas openpyxl customtkinter tkinterdnd2 python-dateutil
+        # 🛠️ 指定ライブラリの末尾に xlsxwriter を追加しました
+        pip install pyinstaller pandas openpyxl customtkinter tkinterdnd2 python-dateutil xlsxwriter
 
     - name: PyInstallerでexeファイルを作成
       run: |
-        # --noconsole オプションを追加して、起動時の黒い画面（CUI）を非表示にします
         pyinstaller --onefile --noconsole --collect-all tkinterdnd2 main.py
 
     - name: 作成したexeファイルを保存してダウンロードできるようにする
