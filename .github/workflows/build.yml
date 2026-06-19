@@ -21,13 +21,12 @@ jobs:
     - name: 必要なライブラリとPyInstallerのインストール
       run: |
         python -m pip install --upgrade pip
-        # 今回のプログラムに必要なライブラリをすべてインストールします
         pip install pyinstaller pandas openpyxl customtkinter tkinterdnd2 python-dateutil
 
     - name: PyInstallerでexeファイルを作成
       run: |
-        # tkinterdnd2などの特殊なライブラリを正しくexeに含めるためのオプションを追加しています
-        pyinstaller --onefile --collect-all tkinterdnd2 main.py
+        # --noconsole オプションを追加して、起動時の黒い画面（CUI）を非表示にします
+        pyinstaller --onefile --noconsole --collect-all tkinterdnd2 main.py
 
     - name: 作成したexeファイルを保存してダウンロードできるようにする
       uses: actions/upload-artifact@v4
