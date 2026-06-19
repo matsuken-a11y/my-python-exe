@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 CONVERSION_MAP = {
     "授業料": "01", "在籍料": "02", "抗体検査費": "04", "聴講料": "07", "入学金": "08",
     "登録料": "09", "実験実習教育研究費": "10", "調理学実習費": "13", "調理実習費 ": "14",
-    "製菓実習費": "15", "給食管理実習": "16", "集団給食調理実習費": "17", "検定料": "20",
+    "製菓実習費": "15", "給食管理実習": "16", "集団給管理実習費": "17", "検定料": "20",
     "若葉寮費": "21", "家庭料理技能検定料": "22", "施設費": "23", "ﾃｸﾆｯｸ実習費": "24",
     "実践調理学実習(実)": "25", "食文化調理学実習Ⅰ": "26", "食文化調理学実習Ⅲ": "27",
     "ﾜｲﾝｺｰﾃﾞｨﾈｰﾄ論実習Ⅰ": "28", "介護食士3級申請料等": "29", "健康診断・細菌検査費": "30",
@@ -209,7 +209,6 @@ class App:
                     for row_idx in range(1, len(df_final) + 1):
                         val = df_final.iloc[row_idx - 1][col_name]
                         if pd.notna(val):
-                            # 「生年月日」は時間なしの日付フォーマット、それ以外は秒付き
                             fmt = simple_date_format if col_name == "生年月日" else datetime_format
                             worksheet.write_datetime(row_idx, col_idx, val, fmt)
 
@@ -293,7 +292,7 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    # 2. 確認用出力ロジック (VBAマクロを完全再現)
+    # 2. 確認用出力ロジック
     def process_verification_data(self):
         try:
             df_src = self.load_source_file()
@@ -443,86 +442,86 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    # 4. 新規・学年変換ロジック (学生マスタ一括更新用マクロ完全再現版)
+    # 4. 新規・学年変換ロジック (マクロ仕様の完全一致・修正版)
     def process_student_data(self):
         try:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # マクロ通り、元データのA2〜I列の最終行までの構造をコピー
-            # 必要な1行目をカットし、データのみを抽出
+            # 元データから、学籍番号〜ログインユーザーID（A列〜I列 / 計9列）をデータ行として抽出
             df_data = df_src.iloc[1:, 0:9].copy()
-            
-            # 各列に分かりやすく仮の見出しを割り振る
             df_data.columns = ["学籍番号", "氏名", "カナ氏名", "生年月日", "所属", "学年", "在籍状態", "紐づけキー", "ログインユーザーID"]
 
-            # 🛠️ 【事前ガード処理】デモ用の学生・生徒データの自動削除ロジック
-            # ① 学籍番号の先頭3文字が "999" で始まる行を削除
+            # 🛠️ 【事前ガード】デモ用データの自動削除
             df_data = df_data[~df_data["学籍番号"].astype(str).str.startswith("999")]
-            # ② 氏名が "専門 太郎" の行を削除
             df_data = df_data[df_data["氏名"].astype(str).str.strip() != "専門 太郎"]
-
-            # リセット後にデータ処理を正確に行うためのインデックス再付与
             df_data.reset_index(drop=True, inplace=True)
 
-            # 残りの3列(支払者ID, パスワード, メール)をNoneで追加して12列にする
-            df_data["学費支払者\nユーザーID"] = None
-            df_data["パスワード"] = None
-            df_data["メールアドレス"] = None
+            # 新規枠として出力用器を作成 (12列)
+            df_output = pd.DataFrame(None, index=range(len(df_data)), columns=range(12))
 
-            # 各行の変換処理を安全・確実にループ実行
             for idx in range(len(df_data)):
-                # ① 生年月日（D列）の日付変換ロジック
+                # 基本的な転記
+                df_output.iat[idx, 0] = df_data.at[idx, "学籍番号"]
+                df_output.iat[idx, 1] = df_data.at[idx, "氏名"]
+                df_output.iat[idx, 2] = df_data.at[idx, "カナ氏名"]
+
+                # ① 生年月日（D列）の日付変換
                 b_val = str(df_data.at[idx, "生年月日"]).split('.')[0].strip()
                 if b_val.isdigit() and len(b_val) == 8:
-                    df_data.at[idx, "生年月日"] = datetime.strptime(b_val, "%Y%m%d")
+                    df_output.iat[idx, 3] = datetime.strptime(b_val, "%Y%m%d")
                 else:
-                    df_data.at[idx, "生年月日"] = None
+                    df_output.iat[idx, 3] = None
 
-                # ② 学年（F列）の0落ち修正（例: 1 ➔ "01"）
+                df_output.iat[idx, 4] = df_data.at[idx, "所属"]
+
+                # ② 学年（F列）の0落ち修正
                 g_val = str(df_data.at[idx, "学年"]).split('.')[0].strip()
                 if g_val.isdigit() and g_val != "":
-                    df_data.at[idx, "学年"] = f"{int(g_val):02d}"
+                    df_output.iat[idx, 5] = f"{int(g_val):02d}"
+                else:
+                    df_output.iat[idx, 5] = g_val
 
-                # ③ 在籍状態（G列）の値をすべて一括して "0" に上書き
-                df_data.at[idx, "in_status"] = "0"
+                # ③ 在籍状態（G列）の値をすべて固定の "0" に上書き
+                df_output.iat[idx, 6] = "0"
 
-                # ④ 【確認いただいた重要ロジック】紐づけキーのコピーと7桁0埋め
+                # ④ 紐づけキー（H列）と元のログインID（I列）から最終キーを確定
                 h_val = str(df_data.at[idx, "紐づけキー"]).split('.')[0].strip()
                 i_val = str(df_data.at[idx, "ログインユーザーID"]).split('.')[0].strip()
 
-                # nanや空欄、Noneという文字列になっていないか厳密に確認
                 is_h_empty = (h_val == "" or h_val == "nan" or h_val == "None")
                 is_i_valid = (i_val != "" and i_val != "nan" and i_val != "None")
 
-                # 保証人がいない（紐づけキーが空）場合は、学生本人のID(I列)の値をH列にコピー
+                # 紐づけキー(H)が空なら、ログインID(I)の値を採用
                 if is_h_empty and is_i_valid:
-                    final_key_val = i_val
+                    final_key = i_val
                 else:
-                    final_key_val = h_val
+                    final_key = h_val
 
-                # 最終的な値を7桁の頭0埋め（例: "0012345"）に成形して「学費支払者ユーザーID(H列の宛先)」へ代入
-                if final_key_val.isdigit():
-                    df_data.at[idx, "学費支払者\nユーザーID"] = f"{int(final_key_val):07d}"
+                # 7桁の頭0埋め（例: "0012345"）に成形して 出力のH列（紐づけキー）に格納
+                if final_key.isdigit():
+                    df_output.iat[idx, 7] = f"{int(final_key):07d}"
                 else:
-                    df_data.at[idx, "学費支払者\nユーザーID"] = None
+                    df_output.iat[idx, 7] = None
 
-            # ⑤ 在籍状態の列の入れ替え、およびマクロ指示通りI列以降の「ログインID」等の列を完全白紙クリア
-            df_data["在籍状態"] = "0"
-            df_data["ログイン\nユーザーID"] = None
+                # ⑤ マクロ指示（Range("I2:I1000").Clear）通り、
+                # 学費支払者ID, ログインID, パスワード, メールアドレス(I列以降)は全て【完全な空白(None)】に設定
+                df_output.iat[idx, 8] = None  # 学費支払者ユーザーID ➔ 空白
+                df_output.iat[idx, 9] = None  # ログインユーザーID ➔ 空白
+                df_output.iat[idx, 10] = None # パスワード ➔ 空白
+                df_output.iat[idx, 11] = None # メールアドレス ➔ 空白
 
-            # edufee指定の12列フォーマットに列順をガチッと再構成
-            df_final = df_data[STUDENT_HEADERS].copy()
+            df_final = df_output.copy()
+            df_final.columns = STUDENT_HEADERS
 
-            # 文字列として出力固定する列の定義
-            string_cols = ["学籍番号", "学年", "在籍状態", "学費支払者\nユーザーID", "ログイン\nユーザーID", "パスワード", "メールアドレス"]
+            # 各種フォーマット指定
+            string_cols = ["学籍番号", "学年", "在籍状態", "紐づけキー", "学費支払者\nユーザーID", "ログイン\nユーザーID", "パスワード", "メールアドレス"]
             date_cols_to_format = ["生年月日"]
 
-            # 保存画面の起動
+            # 保存先の取得
             save_path = self.get_save_path("_学生情報データ")
             if not save_path: return
 
-            # xlsxwriterによる完全書き出し（生年月日は時間なしのyyyy/mm/dd型）
             self.save_converted_excel(df_final, save_path, string_cols, date_cols_to_format, STUDENT_HEADERS)
             messagebox.showinfo("保存完了", f"学生マスタ更新用ファイルの生成が完了しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
