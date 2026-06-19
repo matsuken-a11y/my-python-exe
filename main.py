@@ -154,7 +154,7 @@ class App:
 
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # 🛠️ 【完全空白化対策】初期値を空文字ではなく None (完全な空白セル) に設定
+            # 初期値を None (完全な空白セル) に設定
             df_dest = pd.DataFrame(None, index=range(len(df_src)), columns=range(36))
             df_dest[0] = df_src[0]
             if len(df_src.columns) > 13: df_dest[1] = df_src[13]
@@ -179,7 +179,6 @@ class App:
                         
                         df_dest.at[idx, 9] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")
                     else:
-                        # 🛠️ エラー、または空白の時は None で初期化
                         df_dest.at[idx, 8] = df_dest.at[idx, 7] = df_dest.at[idx, 9] = None
 
             # 整理番号(K列)の設定
@@ -215,12 +214,21 @@ class App:
             df_final = df_dest.iloc[1:].copy()
             df_final.columns = excel_headers
 
-            # 📊 数値型に変換（空のセルは自動で NaN / None になります）
+            # 🛠️ 【修正箇所】正しく金額補完が行われるように構文を修正
+            for i in range(1, 11):
+                code_col = f"明細コード{i}"
+                amt_col = f"明細金額{i}"
+                if code_col in df_final.columns and amt_col in df_final.columns:
+                    mask = df_final[code_col].notna() & (df_final[code_col].astype(str).str.strip() != "") & (df_final[amt_col].isna() | (df_final[amt_col].astype(str).str.strip() == ""))
+                    # .ix や 誤ったloc ではなく、標準的な pandas 構文で 0 を代入
+                    df_final.loc[mask, amt_col] = 0
+
+            # 数値型に変換
             numeric_cols = ["学籍番号", "年度", "徴収金額", "明細金額1", "明細金額2", "明細金額3", "明細金額4", "明細金額5", "明細金額6", "明細金額7", "明細金額8", "明細金額9", "明細金額10"]
             for col in numeric_cols:
                 df_final[col] = pd.to_numeric(df_final[col].astype(str).str.strip(), errors='coerce')
 
-            # 🔒 コード類を完全に文字列として固定。ただし空のセル（NaN/None）は文字列化せず生かす
+            # コード類を完全に文字列（Noneは維持）として固定
             string_cols = ["整理番号", "徴収種別コード", "徴収名目コード", "明細コード1", "明細コード2", "明細コード3", "明細コード4", "明細コード5", "明細コード6", "明細コード7", "明細コード8", "明細コード9", "明細コード10"]
             for col in string_cols:
                 df_final[col] = df_final[col].map(lambda x: str(x).strip() if pd.notna(x) and str(x).strip() != "None" and str(x).strip() != "" else None)
@@ -238,29 +246,33 @@ class App:
             )
             if not save_path: return
 
-            # 🛠️ 指定した列にExcelの書式（文字列・日付）を適用
-            with pd.ExcelWriter(save_path, engine='openpyxl') as writer:
+            # 出力エンジン：xlsxwriter
+            with pd.ExcelWriter(save_path, engine='xlsxwriter') as writer:
                 df_final.to_excel(writer, index=False, header=True)
                 
                 workbook = writer.book
                 worksheet = writer.sheets['Sheet1']
                 
-                # コード類の列を「文字列(@)」に固定（値があるセルのみ処理）
+                # 書式用フォーマットの定義
+                string_format = workbook.add_format({'num_format': '@'})
+                datetime_format = workbook.add_format({'num_format': 'yyyy/mm/dd hh:mm:ss'})
+                
+                # コード類の列を「文字列(@)」に上書き固定
                 for col_name in string_cols:
                     if col_name in excel_headers:
-                        col_idx = excel_headers.index(col_name) + 1
-                        for row in range(2, worksheet.max_row + 1):
-                            cell = worksheet.cell(row=row, column=col_idx)
-                            if cell.value is not None:
-                                cell.number_format = '@'
+                        col_idx = excel_headers.index(col_name)
+                        for row_idx in range(1, len(df_final) + 1):
+                            val = df_final.iloc[row_idx - 1][col_name]
+                            if pd.notna(val):
+                                worksheet.write(row_idx, col_idx, str(val), string_format)
 
-                # 📅 徴収開始日(H列)の書式設定（値があるセルのみ処理）
+                # 📅 徴収開始日(H列)を時間付き日付フォーマットに固定
                 if "徴収開始日" in excel_headers:
-                    h_col_idx = excel_headers.index("徴収開始日") + 1
-                    for row in range(2, worksheet.max_row + 1):
-                        cell = worksheet.cell(row=row, column=h_col_idx)
-                        if cell.value is not None:
-                            cell.number_format = 'yyyy/mm/dd hh:mm:ss'
+                    h_col_idx = excel_headers.index("徴収開始日")
+                    for row_idx in range(1, len(df_final) + 1):
+                        val = df_final.iloc[row_idx - 1]["徴収開始日"]
+                        if pd.notna(val):
+                            worksheet.write_datetime(row_idx, h_col_idx, val, datetime_format)
 
             messagebox.showinfo("保存完了", f"ファイルを保存しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
