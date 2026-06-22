@@ -66,11 +66,11 @@ class App:
     def __init__(self):
         self.root = TkinterDnD.Tk()
         self.root.title("CPからedufeeへ変換")
-        self.root.geometry("720x325") 
+        self.root.geometry("720x390") # 処理選択追加に伴い高さを少し広げました
         self.root.resizable(False, False)
         self.root.configure(bg="#fbfbfb") 
         self.file_path = ""
-        self.current_tab = "徴収情報変換"  # 初期タブ
+        self.current_tab = "徴収情報変換" # 初期タブ
 
         # --- 上部タブ ---
         self.tab_frame = tk.Frame(self.root, bg="#f0f0f0", height=40)
@@ -97,18 +97,18 @@ class App:
 
         # 1. データ読み込みエリア
         self.group1_label = tk.Label(self.main_container, text="1. データ読み込み", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
-        self.group1_label.pack(anchor="w", pady=(5, 5))
+        self.group1_label.pack(anchor="w", pady=(5, 2))
 
-        self.drop_canvas = tk.Canvas(self.main_container, bg="#f5f7f8", highlightthickness=0, height=95)
+        self.drop_canvas = tk.Canvas(self.main_container, bg="#f5f7f8", highlightthickness=0, height=85)
         self.drop_canvas.pack(fill="x", pady=2)
         self.drop_canvas.bind("<Configure>", lambda e: self.draw_canvas_border())
         
-        self.icon_label = tk.Label(self.drop_canvas, text="[CSV]", font=("Arial", 14, "bold"), fg="#2ea44f", bg="#f5f7f8")
-        self.icon_id = self.drop_canvas.create_window(340, 25, window=self.icon_label)
+        self.icon_label = tk.Label(self.drop_canvas, text="[CSV / Excel]", font=("Arial", 12, "bold"), fg="#2ea44f", bg="#f5f7f8")
+        self.icon_id = self.drop_canvas.create_window(340, 20, window=self.icon_label)
         
         self.text_id = self.drop_canvas.create_text(
-            340, 65, text="元データExcel / CSVファイルをここにドラッグ＆ドロップ\n(またはここをクリックしてファイルを選択)",
-            font=("メイリオ", 11, "bold"), fill="#333333", justify="center"
+            340, 55, text="元データExcel / CSVファイルをここにドラッグ＆ドロップ\n(またはここをクリックしてファイルを選択)",
+            font=("メイリオ", 10, "bold"), fill="#333333", justify="center"
         )
         
         self.drop_canvas.bind("<Button-1>", lambda e: self.browse_file())
@@ -116,23 +116,39 @@ class App:
         self.drop_canvas.dnd_bind('<<Drop>>', self.handle_drop)
 
         self.status_frame = tk.Frame(self.main_container, bg="#fbfbfb")
-        self.status_frame.pack(fill="x", pady=5)
+        self.status_frame.pack(fill="x", pady=2)
         
-        self.check_icon = tk.Label(self.status_frame, text="✔", font=("Arial", 12, "bold"), fg="#999999", bg="#fbfbfb")
+        self.check_icon = tk.Label(self.status_frame, text="✔", font=("Arial", 11, "bold"), fg="#999999", bg="#fbfbfb")
         self.check_icon.pack(side="left", padx=(5, 2))
         
-        self.path_label = tk.Label(self.status_frame, text="警告: ファイルが選択されていません。", font=("メイリオ", 10), fg="#666666", bg="#fbfbfb")
+        self.path_label = tk.Label(self.status_frame, text="警告: ファイルが選択されていません。", font=("メイリオ", 9), fg="#666666", bg="#fbfbfb")
         self.path_label.pack(side="left")
 
-        # 2. アップロード用ファイル生成エリア
+        # 🛠️ 2. 処理の選択エリア（新規・学年変換タブ専用）
+        self.process_select_frame = tk.Frame(self.main_container, bg="#fbfbfb")
+        # 初期表示が「徴収情報変換」なので、最初は配置（pack）しません。
+        
+        self.group_select_label = tk.Label(self.process_select_frame, text="2. 処理の選択", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
+        self.group_select_label.pack(anchor="w", pady=(5, 2))
+        
+        self.radio_frame = tk.Frame(self.process_select_frame, bg="#fbfbfb")
+        self.radio_frame.pack(anchor="w", padx=10)
+        
+        self.status_var = tk.StringVar(value="0") # 初期値「0: 在籍」
+        self.radio_active = tk.Radiobutton(self.radio_frame, text="在籍 (在籍状態に '0' を設定)", variable=self.status_var, value="0", font=("メイリオ", 10), bg="#fbfbfb", activebackground="#fbfbfb")
+        self.radio_inactive = tk.Radiobutton(self.radio_frame, text="非在籍 (在籍状態に '1' を設定)", variable=self.status_var, value="1", font=("メイリオ", 10), bg="#fbfbfb", activebackground="#fbfbfb")
+        self.radio_active.pack(side="left", padx=(0, 20))
+        self.radio_inactive.pack(side="left")
+
+        # 3. アップロード用ファイル生成エリア
         self.group2_label = tk.Label(self.main_container, text="2. アップロード用ファイル生成", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
-        self.group2_label.pack(anchor="w", pady=(5, 5))
+        self.group2_label.pack(anchor="w", pady=(5, 2))
 
         self.control_frame = tk.Frame(self.main_container, bg="#fbfbfb")
         self.control_frame.pack(fill="x", pady=2)
 
         self.run_btn = tk.Button(self.control_frame, text="📄   変換実行", font=("メイリオ", 13, "bold"), bg="#22863a", fg="#ffffff", relief="raised", bd=1, activebackground="#1b5e20", activeforeground="#ffffff", command=self.process_data)
-        self.run_btn.pack(fill="both", expand=True, padx=2, pady=2, ipady=8)
+        self.run_btn.pack(fill="both", expand=True, padx=2, pady=2, ipady=6)
 
     def change_tab(self, selected_tab):
         if selected_tab in ["新規・学年変換", "確認用出力", "徴収情報変換", "分納情報変換"]:
@@ -143,18 +159,27 @@ class App:
                 else:
                     btn.configure(bg="#f0f0f0", fg="#000000", font=("メイリオ", 11, "normal"))
             
-            if selected_tab == "確認用出力":
-                self.group2_label.configure(text="2. 確認用ファイル生成")
+            # タブ切り替え時の画面レイアウトとナンバリングの動的制御
+            if selected_tab == "新規・学年変換":
+                # 「新規・学年変換」のときは処理選択を挟む
+                self.group2_label.configure(text="3. アップロード用ファイル生成")
+                # 1つ下の「3. アップロード用〜」の前に「2. 処理の選択」を挿入表示
+                self.process_select_frame.pack(fill="x", after=self.status_frame, pady=2)
             else:
-                self.group2_label.configure(text="2. アップロード用ファイル生成")
+                # それ以外のタブのときは処理選択を非表示にして番号を「2」に戻す
+                self.process_select_frame.pack_forget()
+                if selected_tab == "確認用出力":
+                    self.group2_label.configure(text="2. 確認用ファイル生成")
+                else:
+                    self.group2_label.configure(text="2. アップロード用ファイル生成")
 
     def draw_canvas_border(self):
         self.drop_canvas.delete("border")
         w = self.drop_canvas.winfo_width()
         h = self.drop_canvas.winfo_height()
         self.drop_canvas.create_rectangle(2, 2, w-2, h-2, dash=(4, 4), outline="#999999", width=1, tags="border")
-        self.drop_canvas.coords(self.icon_id, w/2, 25)
-        self.drop_canvas.coords(self.text_id, w/2, 65)
+        self.drop_canvas.coords(self.icon_id, w/2, 20)
+        self.drop_canvas.coords(self.text_id, w/2, 55)
 
     def browse_file(self):
         file_path = filedialog.askopenfilename(filetypes=[("Excel/CSV Files", "*.xlsx *.xls *.csv")])
@@ -227,7 +252,7 @@ class App:
                         src_header_name = str(headers_src[col_idx]).strip()
                         df_dest.iat[idx, target_cols[current_col_idx]] = CONVERSION_MAP.get(src_header_name, src_header_name)
                         current_col_idx += 1
-            if current_col_idx >= len(target_cols): break
+                if current_col_idx >= len(target_cols): break # インデントの位置をループ内に修正
 
     # 1. 徴収情報変換（edufee用）ロジック
     def process_collection_data(self):
@@ -442,7 +467,7 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    # 4. 新規・学年変換ロジック (マクロ仕様の完全一致・修正版)
+    # 4. 新規・学年変換ロジック (ラジオボタンによる条件分岐版)
     def process_student_data(self):
         try:
             df_src = self.load_source_file()
@@ -452,13 +477,16 @@ class App:
             df_data = df_src.iloc[1:, 0:9].copy()
             df_data.columns = ["学籍番号", "氏名", "カナ氏名", "生年月日", "所属", "学年", "在籍状態", "紐づけキー", "ログインユーザーID"]
 
-            # 🛠️ 【事前ガード】デモ用データの自動削除
+            # 【事前ガード】デモ用データの自動削除
             df_data = df_data[~df_data["学籍番号"].astype(str).str.startswith("999")]
             df_data = df_data[df_data["氏名"].astype(str).str.strip() != "専門 太郎"]
             df_data.reset_index(drop=True, inplace=True)
 
             # 新規枠として出力用器を作成 (12列)
             df_output = pd.DataFrame(None, index=range(len(df_data)), columns=range(12))
+
+            # GUIで選択されている在籍状態コードを取得 ("0" または "1")
+            selected_status = self.status_var.get()
 
             for idx in range(len(df_data)):
                 # 基本的な転記
@@ -482,8 +510,8 @@ class App:
                 else:
                     df_output.iat[idx, 5] = g_val
 
-                # ③ 在籍状態（G列）の値をすべて固定の "0" に上書き
-                df_output.iat[idx, 6] = "0"
+                # 🛠️ ③ 在籍状態（G列）の値をラジオボタンの選択内容 ("0" か "1") に上書き
+                df_output.iat[idx, 6] = selected_status
 
                 # ④ 紐づけキー（H列）と元のログインID（I列）から最終キーを確定
                 h_val = str(df_data.at[idx, "紐づけキー"]).split('.')[0].strip()
@@ -504,8 +532,7 @@ class App:
                 else:
                     df_output.iat[idx, 7] = None
 
-                # ⑤ マクロ指示（Range("I2:I1000").Clear）通り、
-                # 学費支払者ID, ログインID, パスワード, メールアドレス(I列以降)は全て【完全な空白(None)】に設定
+                # ⑤ マクロ指示（Range("I2:I1000").Clear）通り、空白に設定
                 df_output.iat[idx, 8] = None  # 学費支払者ユーザーID ➔ 空白
                 df_output.iat[idx, 9] = None  # ログインユーザーID ➔ 空白
                 df_output.iat[idx, 10] = None # パスワード ➔ 空白
