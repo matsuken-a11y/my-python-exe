@@ -2,7 +2,7 @@ import os
 import sys
 from datetime import datetime
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox, filedialog, ttk
 import customtkinter as ctk
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -12,11 +12,29 @@ from tkinterdnd2 import TkinterDnD, DND_FILES
 ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
+# 所属マスター定義
+DEPT_MASTER = {
+    "大学院": [
+        "栄養学専攻修士課程", "保健学専攻修士課程", 
+        "栄養学専攻博士後期課程", "保健学専攻博士後期課程", "大学院研究生"
+    ],
+    "学部": [
+        "実践栄養学科", "栄養科学専攻", "栄養イノベーション専攻", 
+        "保健養護専攻", "食文化栄養学科", "学部科目等履修生", "学部研究生"
+    ],
+    "短大": [
+        "食物栄養学科", "短期大学部科目等履修生"
+    ],
+    "専門": [
+        "調理マイスター科", "製菓科", "調理師科", "調理師科テクニックコース"
+    ]
+}
+
 # 費目変換マップ（明細コード用：徴収情報・分納情報共通）
 CONVERSION_MAP = {
-    "授業料": "01", "在籍料": "02", "抗体検査費": "04", "聴講料": "07", "入学金": "08",
+    "授業料": "01", "In enrollment fee": "02", "在籍料": "02", "抗体検査費": "04", "聴講料": "07", "入学金": "08",
     "登録料": "09", "実験実習教育研究費": "10", "調理学実習費": "13", "調理実習費 ": "14",
-    "製菓実習費": "15", "給食管理実習": "16", "集団給管理実習費": "17", "検定料": "20",
+    "製菓実習費": "15", "給食管理実習": "16", "集団給管理実習費": "17", "集団給食調理実習費": "17", "検定料": "20", "検定費用": "20",
     "若葉寮費": "21", "家庭料理技能検定料": "22", "施設費": "23", "ﾃｸﾆｯｸ実習費": "24",
     "実践調理学実習(実)": "25", "食文化調理学実習Ⅰ": "26", "食文化調理学実習Ⅲ": "27",
     "ﾜｲﾝｺｰﾃﾞｨﾈｰﾄ論実習Ⅰ": "28", "介護食士3級申請料等": "29", "健康診断・細菌検査費": "30",
@@ -25,16 +43,17 @@ CONVERSION_MAP = {
     "外食ﾒﾆｭｰ開発実習": "39", "ｶﾌｪﾚｽﾄﾗﾝ実習": "40", "ﾌｰﾄﾞｺｰﾃﾞｨﾈｰﾄ論実習": "41",
     "ﾜｲﾝｺｰﾃﾞｨﾈｰﾄ論実習Ⅱ": "42", "香友会入会費": "43", "専門調理実習(短)": "44",
     "奨学費": "45", "横巻のぶ奨学金": "46", "AL特待生": "47", "学生会会費": "48",
+    "調理基礎技術実習": "49",
     "受講料(履修証明プログラム)": "56", "授業料特別減免措置": "57", "大学院修士課程特別奨学生": "58",
     "香川調理製菓専門学校特待生": "59", "栄大スカラシップ制度": "60", "北郁子奨学基金奨学金": "61",
     "浅野嘉久賞奨学金": "62", "香川綾・芳子奨励賞": "63", "岡本萌実記念奨学金": "64",
-    "野口医学研究所奨学金": "65", "荒井慶子ｸﾞﾛｰﾊﾞﾙ人材育成奨学金": "66", "私費外国人留学生奨学金制度": "67",
-    "食育ｲﾝｽﾄラクタ―受験料等": "77", "日本語学校費用": "78", "教職員子女減免": "81",
+    "野口医学研究所奨学金": "65", "荒井慶子ｸﾞﾛｰﾊﾞﾙ人材育成奨学金": "66", "荒井慶子グローバル人材育成奨学金": "66", "私費外国人留学生奨学金制度": "67", "私費外国人留学生奨学金": "67",
+    "食育ｲﾝｽﾄラクタ―受験料等": "77", "食育インストラクター受験料等": "77", "日本語学校費用": "78", "教職員子女減免": "81",
     "修学支援新制度": "83", "保護者会費": "85", "研修親睦・入卒費": "88",
     "資格申請・受験・検定費": "89", "預り金": "90", "仮受金収入": "91"
 }
 
-# ① 徴収情報変換用のヘッダー定義
+# 各種ヘッダー定義
 COLLECTION_HEADERS = [
     "学籍番号", "年度", "徴収種別コード", "徴収名目コード", "説明文", "説明文（英字）", 
     "徴収金額", "徴収開始日", "徴収期限", "表示期限", "整理番号", 
@@ -45,7 +64,6 @@ COLLECTION_HEADERS = [
     "明細コード10", "明細金額10"
 ]
 
-# ② 分納情報変換用の専用ヘッダー定義
 INSTALLMENT_HEADERS = [
     "学籍番号", "年度", "徴収種別コード", "徴収名目コード", "分納回数", "説明文", "説明文（英字）", 
     "徴収金額", "徴収開始日", "徴収期限", "表示期限", "整理番号", 
@@ -56,7 +74,6 @@ INSTALLMENT_HEADERS = [
     "明細コード10", "明細金額10"
 ]
 
-# ③ 新規・学年変換用のヘッダー定義 (学生マスタ用フォーマット)
 STUDENT_HEADERS = [
     "学籍番号", "氏名", "カナ氏名", "生年月日", "所属", "学年", "在籍状態", "紐づけキー",
     "学費支払者\nユーザーID", "ログイン\nユーザーID", "パスワード", "メールアドレス"
@@ -66,7 +83,7 @@ class App:
     def __init__(self):
         self.root = TkinterDnD.Tk()
         self.root.title("CPからedufeeへ変換")
-        self.root.geometry("720x390") # 処理選択追加に伴い高さを少し広げました
+        self.root.geometry("740x500") # 絞り込み条件追加に伴い高さを調整
         self.root.resizable(False, False)
         self.root.configure(bg="#fbfbfb") 
         self.file_path = ""
@@ -126,19 +143,53 @@ class App:
 
         # 🛠️ 2. 処理の選択エリア（新規・学年変換タブ専用）
         self.process_select_frame = tk.Frame(self.main_container, bg="#fbfbfb")
-        # 初期表示が「徴収情報変換」なので、最初は配置（pack）しません。
-        
         self.group_select_label = tk.Label(self.process_select_frame, text="2. 処理の選択", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
         self.group_select_label.pack(anchor="w", pady=(5, 2))
         
         self.radio_frame = tk.Frame(self.process_select_frame, bg="#fbfbfb")
         self.radio_frame.pack(anchor="w", padx=10)
         
-        self.status_var = tk.StringVar(value="0") # 初期値「0: 在籍」
+        self.status_var = tk.StringVar(value="0")
         self.radio_active = tk.Radiobutton(self.radio_frame, text="在籍 (在籍状態に '0' を設定)", variable=self.status_var, value="0", font=("メイリオ", 10), bg="#fbfbfb", activebackground="#fbfbfb")
         self.radio_inactive = tk.Radiobutton(self.radio_frame, text="非在籍 (在籍状態に '1' を設定)", variable=self.status_var, value="1", font=("メイリオ", 10), bg="#fbfbfb", activebackground="#fbfbfb")
         self.radio_active.pack(side="left", padx=(0, 20))
         self.radio_inactive.pack(side="left")
+
+        # 🛠️ 【新設】確認用出力タブ専用の条件指定エリア
+        self.verification_filter_frame = tk.Frame(self.main_container, bg="#fbfbfb")
+        
+        self.v_filter_label = tk.Label(self.verification_filter_frame, text="2. 出力条件の設定", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
+        self.v_filter_label.pack(anchor="w", pady=(5, 2))
+        
+        # 条件入力コンテナ
+        self.filter_grid = tk.Frame(self.verification_filter_frame, bg="#fbfbfb")
+        self.filter_grid.pack(fill="x", padx=10, pady=2)
+        
+        # 所属選択（大分類＆中分類）
+        tk.Label(self.filter_grid, text="所属(学校種別):", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=0, column=0, sticky="w", pady=4)
+        self.macro_dept_var = tk.StringVar()
+        self.macro_dept_combo = ttk.Combobox(self.filter_grid, textvariable=self.macro_dept_var, values=list(DEPT_MASTER.keys()), state="readonly", width=12, font=("メイリオ", 9))
+        self.macro_dept_combo.grid(row=0, column=1, sticky="w", padx=(5, 15))
+        self.macro_dept_combo.bind("<<ComboboxSelected>>", self.update_sub_depts)
+        
+        tk.Label(self.filter_grid, text="所属名称(学科等):", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=0, column=2, sticky="w", pady=4)
+        self.sub_dept_var = tk.StringVar()
+        self.sub_dept_combo = ttk.Combobox(self.filter_grid, textvariable=self.sub_dept_var, state="readonly", width=25, font=("メイリオ", 9))
+        self.sub_dept_combo.grid(row=0, column=3, sticky="w", padx=5)
+        
+        # 納付回数
+        tk.Label(self.filter_grid, text="納付回数:", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=1, column=0, sticky="w", pady=8)
+        self.pay_count_var = tk.StringVar()
+        self.pay_count_entry = tk.Entry(self.filter_grid, textvariable=self.pay_count_var, width=6, font=("Arial", 10))
+        self.pay_count_entry.grid(row=1, column=1, sticky="w", padx=5)
+        
+        # 通常/修学支援
+        tk.Label(self.filter_grid, text="制度種別:", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=1, column=2, sticky="w", pady=8)
+        self.support_type_var = tk.StringVar(value="通常")
+        self.rad_normal = tk.Radiobutton(self.filter_grid, text="通常", variable=self.support_type_var, value="通常", font=("メイリオ", 9), bg="#fbfbfb")
+        self.rad_support = tk.Radiobutton(self.filter_grid, text="修学支援", variable=self.support_type_var, value="修学支援", font=("メイリオ", 9), bg="#fbfbfb")
+        self.rad_normal.grid(row=1, column=3, sticky="w", padx=(5, 15))
+        self.rad_support.grid(row=1, column=3, sticky="w", padx=(70, 0))
 
         # 3. アップロード用ファイル生成エリア
         self.group2_label = tk.Label(self.main_container, text="2. アップロード用ファイル生成", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
@@ -147,8 +198,11 @@ class App:
         self.control_frame = tk.Frame(self.main_container, bg="#fbfbfb")
         self.control_frame.pack(fill="x", pady=2)
 
-        self.run_btn = tk.Button(self.control_frame, text="📄   変換実行", font=("メイリオ", 13, "bold"), bg="#22863a", fg="#ffffff", relief="raised", bd=1, activebackground="#1b5e20", activeforeground="#ffffff", command=self.process_data)
+        self.run_btn = tk.Button(self.control_frame, text="📄    変換実行", font=("メイリオ", 13, "bold"), bg="#22863a", fg="#ffffff", relief="raised", bd=1, activebackground="#1b5e20", activeforeground="#ffffff", command=self.process_data)
         self.run_btn.pack(fill="both", expand=True, padx=2, pady=2, ipady=6)
+
+        # 初期配置制御の実行
+        self.change_tab(self.current_tab)
 
     def change_tab(self, selected_tab):
         if selected_tab in ["新規・学年変換", "確認用出力", "徴収情報変換", "分納情報変換"]:
@@ -159,19 +213,26 @@ class App:
                 else:
                     btn.configure(bg="#f0f0f0", fg="#000000", font=("メイリオ", 11, "normal"))
             
+            # 全ての可変フレームを一旦非表示にする
+            self.process_select_frame.pack_forget()
+            self.verification_filter_frame.pack_forget()
+            
             # タブ切り替え時の画面レイアウトとナンバリングの動的制御
             if selected_tab == "新規・学年変換":
-                # 「新規・学年変換」のときは処理選択を挟む
                 self.group2_label.configure(text="3. アップロード用ファイル生成")
-                # 1つ下の「3. アップロード用〜」の前に「2. 処理の選択」を挿入表示
                 self.process_select_frame.pack(fill="x", after=self.status_frame, pady=2)
+            elif selected_tab == "確認用出力":
+                self.group2_label.configure(text="3. 確認用ファイル生成")
+                self.verification_filter_frame.pack(fill="x", after=self.status_frame, pady=2)
             else:
-                # それ以外のタブのときは処理選択を非表示にして番号を「2」に戻す
-                self.process_select_frame.pack_forget()
-                if selected_tab == "確認用出力":
-                    self.group2_label.configure(text="2. 確認用ファイル生成")
-                else:
-                    self.group2_label.configure(text="2. アップロード用ファイル生成")
+                self.group2_label.configure(text="2. アップロード用ファイル生成")
+
+    def update_sub_depts(self, event=None):
+        """大分類の選択に応じて中分類ドロップダウンのリストを更新する"""
+        macro = self.macro_dept_var.get()
+        if macro in DEPT_MASTER:
+            self.sub_dept_combo.configure(values=DEPT_MASTER[macro])
+            self.sub_dept_combo.set("") # 選択をリセット
 
     def draw_canvas_border(self):
         self.drop_canvas.delete("border")
@@ -209,7 +270,6 @@ class App:
         elif self.current_tab == "新規・学年変換":
             self.process_student_data()
 
-    # --- 共通の共通データ出力処理 (xlsxwriterによる型固定) ---
     def save_converted_excel(self, df_final, save_path, string_cols, date_cols, headers_list):
         with pd.ExcelWriter(save_path, engine='xlsxwriter') as writer:
             df_final.to_excel(writer, index=False, header=True)
@@ -219,7 +279,6 @@ class App:
             datetime_format = workbook.add_format({'num_format': 'yyyy/mm/dd hh:mm:ss'})
             simple_date_format = workbook.add_format({'num_format': 'yyyy/mm/dd'})
             
-            # 文字列型のセル書式書き込み
             for col_name in string_cols:
                 if col_name in headers_list:
                     col_idx = headers_list.index(col_name)
@@ -227,7 +286,6 @@ class App:
                         val = df_final.iloc[row_idx - 1][col_name]
                         if pd.notna(val): worksheet.write(row_idx, col_idx, str(val), string_format)
 
-            # 日付型のセル書式書き込み
             for col_name in date_cols:
                 if col_name in headers_list:
                     col_idx = headers_list.index(col_name)
@@ -237,7 +295,6 @@ class App:
                             fmt = simple_date_format if col_name == "生年月日" else datetime_format
                             worksheet.write_datetime(row_idx, col_idx, val, fmt)
 
-    # --- 共通の明細費目・金額展開ロジック (AA列以降) ---
     def populate_item_details(self, df_src, df_dest, headers_src, target_start_idx):
         target_cols = [target_start_idx + i*2 for i in range(10)]
         amt_cols = [target_start_idx + 1 + i*2 for i in range(10)]
@@ -252,9 +309,9 @@ class App:
                         src_header_name = str(headers_src[col_idx]).strip()
                         df_dest.iat[idx, target_cols[current_col_idx]] = CONVERSION_MAP.get(src_header_name, src_header_name)
                         current_col_idx += 1
-                if current_col_idx >= len(target_cols): break # インデントの位置をループ内に修正
+                if current_col_idx >= len(target_cols): break
 
-    # 1. 徴収情報変換（edufee用）ロジック
+    # 1. 徴収情報変換ロジック
     def process_collection_data(self):
         try:
             offset_val = -1
@@ -317,19 +374,53 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    # 2. 確認用出力ロジック
+    # 🛠️ 2. 確認用出力ロジック（前処理なし・生データから完全自動絞り込み版）
     def process_verification_data(self):
         try:
+            # 入力チェック
+            target_sub_dept = self.sub_dept_var.get()
+            target_pay_count = self.pay_count_var.get().strip()
+            target_type = self.support_type_var.get()
+            
+            if not target_sub_dept:
+                messagebox.showwarning("警告", "所属名称(学科等)を選択してください。")
+                return
+            if not target_pay_count:
+                messagebox.showwarning("警告", "納付回数を入力してください。")
+                return
+
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            df_src.columns = df_src.iloc[0]
+            # 生CSVの1行目を正式なヘッダーとして設定し、データ行を切り出し
+            df_src.columns = [str(c).strip() for c in df_src.iloc[0]]
             df_data = df_src.iloc[1:].copy()
 
-            clear_day_col = df_data.columns[22] 
-            df_data = df_data[df_data[clear_day_col].isna() | (df_data[clear_day_col].astype(str).str.strip() == "")]
+            # --- ① 画面指定の条件でデータを絞り込み (フィルター) ---
+            
+            # 条件1: 所属名称の不一致を除く
+            df_data = df_data[df_data["所属名称"].astype(str).str.strip() == target_sub_dept]
+            
+            # 条件2: 納付回数の不一致を除く（型を考慮して文字列展開後に比較）
+            df_data["temp_pay_count"] = df_data["学生納付情報.納付回数"].astype(str).str.split('.').str[0].str.strip()
+            df_data = df_data[df_data["temp_pay_count"] == target_pay_count]
+            
+            # 条件3: 通常 / 修学支援の判定 (納付回数名称の文言判定)
+            if target_type == "修学支援":
+                df_data = df_data[df_data["納付回数名称"].astype(str).str.contains("修学支援", na=False)]
+            else:
+                df_data = df_data[~df_data["納付回数名称"].astype(str).str.contains("修学支援", na=False)]
 
-            fee_cols = list(df_data.columns[26:])
+            # 条件4: 未消込のみ抽出 (学生納付情報.消込日 が空)
+            df_data = df_data[df_data["学生納付情報.消込日"].isna() | (df_data["学生納付情報.消込日"].astype(str).str.strip() == "")]
+
+            if df_data.empty:
+                messagebox.showinfo("情報", "該当するデータが見つかりませんでした。条件を確認してください。")
+                return
+
+            # --- ② 出力する列の選別 ---
+            # 金額が発生している費目列を動的に見つける (26列目の「授業料」以降)
+            fee_cols = list(df_src.columns[26:])
             active_fee_cols = []
             for col in fee_cols:
                 series = df_data[col].dropna().astype(str).str.strip()
@@ -337,24 +428,34 @@ class App:
                 if not series.empty:
                     active_fee_cols.append(col)
 
-            all_cols = list(df_src.columns)
-            indices_to_delete = [1, 3, 6, 8, 9, 10, 11, 12, 13, 18, 19, 20, 21, 22, 23, 24, 25]
+            # 残したい基本列の定義（不要な受験番号、コード、クラス、口座などを除外）
+            keep_base_cols = [
+                "学籍番号", "氏名", "在学区分名称", "所属名称", "学年１", 
+                "学生納付情報.納付回数", "学生納付情報.納付金額", "学生納付情報.納期", "学生納付情報.延納期限"
+            ]
             
-            base_cols = [col for idx, col in enumerate(df_src.columns[:26]) if idx not in indices_to_delete]
-            final_cols = base_cols + active_fee_cols
+            # 最終的な列構成を結合
+            final_cols = keep_base_cols + active_fee_cols
             df_result = df_data[final_cols].copy()
 
+            # ヘッダーを人間が見やすいようにリネーム
             rename_map = {
-                "在学区分名称": "区分", "学年１": "学年", "学生納付情報.納付回数": "納付回数",
-                "学生納付情報.納付金額": "納付金額", "学生納付情報.納期": "納期", "学生納付情報.延納期限": "延納期限"
+                "在学区分名称": "区分", "所属名称": "所属", "学年１": "学年", 
+                "学生納付情報.納付回数": "納付回数", "学生納付情報.納付金額": "納付金額", 
+                "学生納付情報.納期": "納期", "学生納付情報.延納期限": "延納期限"
             }
             df_result.rename(columns=rename_map, inplace=True)
+            
+            # 集計用（ユニーク学籍番号数）
             unique_student_count = df_result["学籍番号"].nunique()
+            
+            # 先頭に「No」列を挿入
             df_result.insert(0, "No", range(1, len(df_result) + 1))
 
             save_path = self.get_save_path("_確認用出力")
             if not save_path: return
 
+            # --- ③ Excel出力（xlsxwriterによる成形） ---
             with pd.ExcelWriter(save_path, engine='xlsxwriter') as writer:
                 df_result.to_excel(writer, index=False, header=True)
                 workbook = writer.book
@@ -370,21 +471,25 @@ class App:
                     worksheet.write(0, col_idx, col_name, header_format)
                     for row_idx in range(1, len(df_result) + 1):
                         val = df_result.iloc[row_idx - 1][col_name]
+                        
                         if col_name == "納付金額" or col_name in active_fee_cols:
                             if pd.notna(val) and str(val).strip() != "":
                                 try: worksheet.write_number(row_idx, col_idx, float(val), comma_format)
-                                except ValueError: worksheet.write(row_idx, col_idx, val, data_format)
+                                catch ValueError: worksheet.write(row_idx, col_idx, val, data_format)
                             else: worksheet.write(row_idx, col_idx, "", data_format)
                         elif col_name == "学籍番号":
                             worksheet.write(row_idx, col_idx, str(val) if pd.notna(val) else "", string_format)
                         else:
                             worksheet.write(row_idx, col_idx, val if pd.notna(val) else "", data_format)
 
+                # 最下部にユニーク人数を出力
                 summary_row = len(df_result) + 2
+                worksheet.write(summary_row, 1, "ユニーク人数合計", data_format)
                 worksheet.write(summary_row, 2, unique_student_count, data_format)
 
+                # 列幅の自動調整
                 for col_idx, col_name in enumerate(headers):
-                    if col_idx >= 9: worksheet.set_column(col_idx, col_idx, 12)
+                    if col_idx >= 9: worksheet.set_column(col_idx, col_idx, 14)
                     else:
                         max_len = max(df_result[col_name].astype(str).map(len).max() if not df_result.empty else 0, len(col_name)) + 3
                         worksheet.set_column(col_idx, col_idx, min(max_len, 30))
@@ -467,34 +572,27 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    # 4. 新規・学年変換ロジック (ラジオボタンによる条件分岐版)
+    # 4. 新規・学年変換ロジック
     def process_student_data(self):
         try:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # 元データから、学籍番号〜ログインユーザーID（A列〜I列 / 計9列）をデータ行として抽出
             df_data = df_src.iloc[1:, 0:9].copy()
             df_data.columns = ["学籍番号", "氏名", "カナ氏名", "生年月日", "所属", "学年", "在籍状態", "紐づけキー", "ログインユーザーID"]
 
-            # 【事前ガード】デモ用データの自動削除
             df_data = df_data[~df_data["学籍番号"].astype(str).str.startswith("999")]
             df_data = df_data[df_data["氏名"].astype(str).str.strip() != "専門 太郎"]
             df_data.reset_index(drop=True, inplace=True)
 
-            # 新規枠として出力用器を作成 (12列)
             df_output = pd.DataFrame(None, index=range(len(df_data)), columns=range(12))
-
-            # GUIで選択されている在籍状態コードを取得 ("0" または "1")
             selected_status = self.status_var.get()
 
             for idx in range(len(df_data)):
-                # 基本的な転記
                 df_output.iat[idx, 0] = df_data.at[idx, "学籍番号"]
                 df_output.iat[idx, 1] = df_data.at[idx, "氏名"]
                 df_output.iat[idx, 2] = df_data.at[idx, "カナ氏名"]
 
-                # ① 生年月日（D列）の日付変換
                 b_val = str(df_data.at[idx, "生年月日"]).split('.')[0].strip()
                 if b_val.isdigit() and len(b_val) == 8:
                     df_output.iat[idx, 3] = datetime.strptime(b_val, "%Y%m%d")
@@ -503,49 +601,41 @@ class App:
 
                 df_output.iat[idx, 4] = df_data.at[idx, "所属"]
 
-                # ② 学年（F列）の0落ち修正
                 g_val = str(df_data.at[idx, "学年"]).split('.')[0].strip()
                 if g_val.isdigit() and g_val != "":
                     df_output.iat[idx, 5] = f"{int(g_val):02d}"
                 else:
                     df_output.iat[idx, 5] = g_val
 
-                # 🛠️ ③ 在籍状態（G列）の値をラジオボタンの選択内容 ("0" か "1") に上書き
                 df_output.iat[idx, 6] = selected_status
 
-                # ④ 紐づけキー（H列）と元のログインID（I列）から最終キーを確定
                 h_val = str(df_data.at[idx, "紐づけキー"]).split('.')[0].strip()
                 i_val = str(df_data.at[idx, "ログインユーザーID"]).split('.')[0].strip()
 
                 is_h_empty = (h_val == "" or h_val == "nan" or h_val == "None")
                 is_i_valid = (i_val != "" and i_val != "nan" and i_val != "None")
 
-                # 紐づけキー(H)が空なら、ログインID(I)の値を採用
                 if is_h_empty and is_i_valid:
                     final_key = i_val
                 else:
                     final_key = h_val
 
-                # 7桁の頭0埋め（例: "0012345"）に成形して 出力のH列（紐づけキー）に格納
                 if final_key.isdigit():
                     df_output.iat[idx, 7] = f"{int(final_key):07d}"
                 else:
                     df_output.iat[idx, 7] = None
 
-                # ⑤ マクロ指示（Range("I2:I1000").Clear）通り、空白に設定
-                df_output.iat[idx, 8] = None  # 学費支払者ユーザーID ➔ 空白
-                df_output.iat[idx, 9] = None  # ログインユーザーID ➔ 空白
-                df_output.iat[idx, 10] = None # パスワード ➔ 空白
-                df_output.iat[idx, 11] = None # メールアドレス ➔ 空白
+                df_output.iat[idx, 8] = None  
+                df_output.iat[idx, 9] = None  
+                df_output.iat[idx, 10] = None 
+                df_output.iat[idx, 11] = None 
 
             df_final = df_output.copy()
             df_final.columns = STUDENT_HEADERS
 
-            # 各種フォーマット指定
             string_cols = ["学籍番号", "学年", "在籍状態", "紐づけキー", "学費支払者\nユーザーID", "ログイン\nユーザーID", "パスワード", "メールアドレス"]
             date_cols_to_format = ["生年月日"]
 
-            # 保存先の取得
             save_path = self.get_save_path("_学生情報データ")
             if not save_path: return
 
@@ -554,7 +644,6 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    # 共通ファイル読み込み処理
     def load_source_file(self):
         df = None
         try:
@@ -566,7 +655,6 @@ class App:
                 df = pd.read_csv(self.file_path, header=None, encoding="utf-8")
         return df
 
-    # 共通「名前を付けて保存」画面処理
     def get_save_path(self, suffix):
         home_dir = os.path.expanduser("~")
         desktop_path = os.path.join(home_dir, "OneDrive", "デスクトップ")
