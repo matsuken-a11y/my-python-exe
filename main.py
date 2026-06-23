@@ -83,11 +83,11 @@ class App:
     def __init__(self):
         self.root = TkinterDnD.Tk()
         self.root.title("CPからedufeeへ変換")
-        self.root.geometry("740x500") # 絞り込み条件追加に伴い高さを調整
+        self.root.geometry("740x500") 
         self.root.resizable(False, False)
         self.root.configure(bg="#fbfbfb") 
         self.file_path = ""
-        self.current_tab = "徴収情報変換" # 初期タブ
+        self.current_tab = "徴収情報変換" 
 
         # --- 上部タブ ---
         self.tab_frame = tk.Frame(self.root, bg="#f0f0f0", height=40)
@@ -141,7 +141,7 @@ class App:
         self.path_label = tk.Label(self.status_frame, text="警告: ファイルが選択されていません。", font=("メイリオ", 9), fg="#666666", bg="#fbfbfb")
         self.path_label.pack(side="left")
 
-        # 🛠️ 2. 処理の選択エリア（新規・学年変換タブ専用）
+        # 2. 処理の選択エリア（新規・学年変換タブ専用）
         self.process_select_frame = tk.Frame(self.main_container, bg="#fbfbfb")
         self.group_select_label = tk.Label(self.process_select_frame, text="2. 処理の選択", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
         self.group_select_label.pack(anchor="w", pady=(5, 2))
@@ -155,7 +155,7 @@ class App:
         self.radio_active.pack(side="left", padx=(0, 20))
         self.radio_inactive.pack(side="left")
 
-        # 🛠️ 【新設】確認用出力タブ専用の条件指定エリア
+        # 確認用出力タブ専用の条件指定エリア
         self.verification_filter_frame = tk.Frame(self.main_container, bg="#fbfbfb")
         
         self.v_filter_label = tk.Label(self.verification_filter_frame, text="2. 出力条件の設定", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
@@ -213,11 +213,9 @@ class App:
                 else:
                     btn.configure(bg="#f0f0f0", fg="#000000", font=("メイリオ", 11, "normal"))
             
-            # 全ての可変フレームを一旦非表示にする
             self.process_select_frame.pack_forget()
             self.verification_filter_frame.pack_forget()
             
-            # タブ切り替え時の画面レイアウトとナンバリングの動的制御
             if selected_tab == "新規・学年変換":
                 self.group2_label.configure(text="3. アップロード用ファイル生成")
                 self.process_select_frame.pack(fill="x", after=self.status_frame, pady=2)
@@ -228,11 +226,10 @@ class App:
                 self.group2_label.configure(text="2. アップロード用ファイル生成")
 
     def update_sub_depts(self, event=None):
-        """大分類の選択に応じて中分類ドロップダウンのリストを更新する"""
         macro = self.macro_dept_var.get()
         if macro in DEPT_MASTER:
             self.sub_dept_combo.configure(values=DEPT_MASTER[macro])
-            self.sub_dept_combo.set("") # 選択をリセット
+            self.sub_dept_combo.set("") 
 
     def draw_canvas_border(self):
         self.drop_canvas.delete("border")
@@ -374,10 +371,9 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    # 🛠️ 2. 確認用出力ロジック（前処理なし・生データから完全自動絞り込み版）
+    # 2. 確認用出力ロジック
     def process_verification_data(self):
         try:
-            # 入力チェック
             target_sub_dept = self.sub_dept_var.get()
             target_pay_count = self.pay_count_var.get().strip()
             target_type = self.support_type_var.get()
@@ -392,34 +388,26 @@ class App:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # 生CSVの1行目を正式なヘッダーとして設定し、データ行を切り出し
             df_src.columns = [str(c).strip() for c in df_src.iloc[0]]
             df_data = df_src.iloc[1:].copy()
 
-            # --- ① 画面指定の条件でデータを絞り込み (フィルター) ---
-            
-            # 条件1: 所属名称の不一致を除く
+            # フィルタリング
             df_data = df_data[df_data["所属名称"].astype(str).str.strip() == target_sub_dept]
             
-            # 条件2: 納付回数の不一致を除く（型を考慮して文字列展開後に比較）
             df_data["temp_pay_count"] = df_data["学生納付情報.納付回数"].astype(str).str.split('.').str[0].str.strip()
             df_data = df_data[df_data["temp_pay_count"] == target_pay_count]
             
-            # 条件3: 通常 / 修学支援の判定 (納付回数名称の文言判定)
             if target_type == "修学支援":
                 df_data = df_data[df_data["納付回数名称"].astype(str).str.contains("修学支援", na=False)]
             else:
                 df_data = df_data[~df_data["納付回数名称"].astype(str).str.contains("修学支援", na=False)]
 
-            # 条件4: 未消込のみ抽出 (学生納付情報.消込日 が空)
             df_data = df_data[df_data["学生納付情報.消込日"].isna() | (df_data["学生納付情報.消込日"].astype(str).str.strip() == "")]
 
             if df_data.empty:
                 messagebox.showinfo("情報", "該当するデータが見つかりませんでした。条件を確認してください。")
                 return
 
-            # --- ② 出力する列の選別 ---
-            # 金額が発生している費目列を動的に見つける (26列目の「授業料」以降)
             fee_cols = list(df_src.columns[26:])
             active_fee_cols = []
             for col in fee_cols:
@@ -428,17 +416,14 @@ class App:
                 if not series.empty:
                     active_fee_cols.append(col)
 
-            # 残したい基本列の定義（不要な受験番号、コード、クラス、口座などを除外）
             keep_base_cols = [
                 "学籍番号", "氏名", "在学区分名称", "所属名称", "学年１", 
                 "学生納付情報.納付回数", "学生納付情報.納付金額", "学生納付情報.納期", "学生納付情報.延納期限"
             ]
             
-            # 最終的な列構成を結合
             final_cols = keep_base_cols + active_fee_cols
             df_result = df_data[final_cols].copy()
 
-            # ヘッダーを人間が見やすいようにリネーム
             rename_map = {
                 "在学区分名称": "区分", "所属名称": "所属", "学年１": "学年", 
                 "学生納付情報.納付回数": "納付回数", "学生納付情報.納付金額": "納付金額", 
@@ -446,16 +431,12 @@ class App:
             }
             df_result.rename(columns=rename_map, inplace=True)
             
-            # 集計用（ユニーク学籍番号数）
             unique_student_count = df_result["学籍番号"].nunique()
-            
-            # 先頭に「No」列を挿入
             df_result.insert(0, "No", range(1, len(df_result) + 1))
 
             save_path = self.get_save_path("_確認用出力")
             if not save_path: return
 
-            # --- ③ Excel出力（xlsxwriterによる成形） ---
             with pd.ExcelWriter(save_path, engine='xlsxwriter') as writer:
                 df_result.to_excel(writer, index=False, header=True)
                 workbook = writer.book
@@ -475,19 +456,17 @@ class App:
                         if col_name == "納付金額" or col_name in active_fee_cols:
                             if pd.notna(val) and str(val).strip() != "":
                                 try: worksheet.write_number(row_idx, col_idx, float(val), comma_format)
-                                catch ValueError: worksheet.write(row_idx, col_idx, val, data_format)
+                                except ValueError: worksheet.write(row_idx, col_idx, val, data_format)
                             else: worksheet.write(row_idx, col_idx, "", data_format)
                         elif col_name == "学籍番号":
                             worksheet.write(row_idx, col_idx, str(val) if pd.notna(val) else "", string_format)
                         else:
                             worksheet.write(row_idx, col_idx, val if pd.notna(val) else "", data_format)
 
-                # 最下部にユニーク人数を出力
                 summary_row = len(df_result) + 2
                 worksheet.write(summary_row, 1, "ユニーク人数合計", data_format)
                 worksheet.write(summary_row, 2, unique_student_count, data_format)
 
-                # 列幅の自動調整
                 for col_idx, col_name in enumerate(headers):
                     if col_idx >= 9: worksheet.set_column(col_idx, col_idx, 14)
                     else:
