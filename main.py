@@ -374,7 +374,7 @@ class App:
             for i in range(1, 11):
                 code_col = f"明細コード{i}"
                 amt_col = f"明細金額{i}"
-                if code_col in df_final.columns && amt_col in df_final.columns:
+                if code_col in df_final.columns and amt_col in df_final.columns:
                     mask = df_final[code_col].notna() & (df_final[code_col].astype(str).str.strip() != "") & (df_final[amt_col].isna() | (df_final[amt_col].astype(str).str.strip() == ""))
                     df_final.loc[mask, amt_col] = 0
 
@@ -415,15 +415,14 @@ class App:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # 🛠️ 1行目を明示的に「ヘッダー」として割り当てるように修正
-            df_src.columns = [str(c).strip() for c in df_src.iloc[0]]
-            df_data = df_src.iloc[1:].copy()
+            # 🛠️ 見出しの上書きによる個人データ化のバグコードを完全削除（修正済）
+            df_data = df_src.copy()
 
-            # 🛠️ 表記揺れ（全角・半角・スペース）を完全に吸収して列名を特定
+            # 表記揺れ（全角・半角・スペース）を完全に吸収して列名を特定
             raw_headers = list(df_data.columns)
             grade_col_name = None
             for h in raw_headers:
-                normalized_h = h.replace(' ', '').replace(' ', '').replace('１', '1')
+                normalized_h = str(h).replace(' ', '').replace(' ', '').replace('１', '1')
                 if normalized_h == "学年1":
                     grade_col_name = h
                     break
@@ -446,8 +445,6 @@ class App:
                 df_data = df_data[df_data["納付回数名称"].astype(str).str.contains("修学支援", na=False)]
             else:
                 df_data = df_data[~df_data["納付回数名称"].astype(str).str.contains("修学支援", na=False)]
-
-            # 🛠️ 【仕様変更】実務の利便性を考慮し、「消込日」による制限（未納者のみ）を解除。入金済みも含め条件一致者を全員出します。
 
             if df_data.empty:
                 messagebox.showinfo("情報", "該当するデータが見つかりませんでした。条件を確認してください。")
@@ -672,7 +669,6 @@ class App:
     def load_source_file(self):
         df = None
         try:
-            # 🛠️ 読み込み時にヘッダーを自動識別して設定するように安定化
             df = pd.read_csv(self.file_path, encoding="utf-8")
         except Exception:
             try:
