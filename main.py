@@ -12,21 +12,33 @@ from tkinterdnd2 import TkinterDnD, DND_FILES
 ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
-# 所属マスター定義
+# 所属マスター定義（正式名称にアップデート）
 DEPT_MASTER = {
     "大学院": [
-        "栄養学専攻修士課程", "保健学専攻修士課程", 
-        "栄養学専攻博士後期課程", "保健学専攻博士後期課程", "大学院研究生"
+        "日本栄養大学大学院栄養学研究科栄養学専攻修士課程",
+        "日本栄養大学大学院栄養学研究科保健学専攻修士課程",
+        "日本栄養大学大学院栄養学研究科栄養学専攻博士後期課程",
+        "日本栄養大学大学院栄養学研究科保健学専攻博士後期課程",
+        "日本栄養大学大学院栄養学研究科大学院研究生"
     ],
     "学部": [
-        "実践栄養学科", "栄養科学専攻", "栄養イノベーション専攻", 
-        "保健養護専攻", "食文化栄養学科", "学部科目等履修生", "学部研究生"
+        "日本栄養大学栄養学部 実践栄養学科",
+        "日本栄養大学栄養学部保健栄養学科 イノベーション専攻",
+        "日本栄養大学栄養学部保健栄養学科 栄養科学専攻",
+        "日本栄養大学栄養学部保健栄養学科 保健養護専攻",
+        "日本栄養大学栄養学部 食文化栄養学科",
+        "日本栄養大学栄養学部科目等履修生",
+        "日本栄養大学栄養学部研究生"
     ],
     "短大": [
-        "食物栄養学科", "短期大学部科目等履修生"
+        "日本栄養大学短期大学部食物栄養学科",
+        "日本栄養大学短期大学部科目等履修生"
     ],
-    "専門": [
-        "調理マイスター科", "製菓科", "調理師科", "調理師科テクニックコース"
+    "専門学校": [
+        "香川調理製菓専門学校調理専門課程調理師科",
+        "香川調理製菓専門学校調理専門課程調理師科テクニックコース",
+        "香川調理製菓専門学校調理専門課程製菓科",
+        "香川調理製菓専門学校調理専門課程調理マイスター科"
     ]
 }
 
@@ -83,7 +95,7 @@ class App:
     def __init__(self):
         self.root = TkinterDnD.Tk()
         self.root.title("CPからedufeeへ変換")
-        self.root.geometry("740x500") 
+        self.root.geometry("760x520") # 長い正式名称が表示しやすいように幅を少し広げました
         self.root.resizable(False, False)
         self.root.configure(bg="#fbfbfb") 
         self.file_path = ""
@@ -121,10 +133,10 @@ class App:
         self.drop_canvas.bind("<Configure>", lambda e: self.draw_canvas_border())
         
         self.icon_label = tk.Label(self.drop_canvas, text="[CSV / Excel]", font=("Arial", 12, "bold"), fg="#2ea44f", bg="#f5f7f8")
-        self.icon_id = self.drop_canvas.create_window(340, 20, window=self.icon_label)
+        self.icon_id = self.drop_canvas.create_window(360, 20, window=self.icon_label)
         
         self.text_id = self.drop_canvas.create_text(
-            340, 55, text="元データExcel / CSVファイルをここにドラッグ＆ドロップ\n(またはここをクリックしてファイルを選択)",
+            360, 55, text="元データExcel / CSVファイルをここにドラッグ＆ドロップ\n(またはここをクリックしてファイルを選択)",
             font=("メイリオ", 10, "bold"), fill="#333333", justify="center"
         )
         
@@ -161,35 +173,42 @@ class App:
         self.v_filter_label = tk.Label(self.verification_filter_frame, text="2. 出力条件の設定", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
         self.v_filter_label.pack(anchor="w", pady=(5, 2))
         
-        # 条件入力コンテナ
+        # 条件入力コンテナ (Grid配置を1列ずつの縦並びベースに調整して見やすくしました)
         self.filter_grid = tk.Frame(self.verification_filter_frame, bg="#fbfbfb")
         self.filter_grid.pack(fill="x", padx=10, pady=2)
         
-        # 所属選択（大分類＆中分類）
+        # 1段目：所属大分類＆中分類
         tk.Label(self.filter_grid, text="所属(学校種別):", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=0, column=0, sticky="w", pady=4)
         self.macro_dept_var = tk.StringVar()
         self.macro_dept_combo = ttk.Combobox(self.filter_grid, textvariable=self.macro_dept_var, values=list(DEPT_MASTER.keys()), state="readonly", width=12, font=("メイリオ", 9))
         self.macro_dept_combo.grid(row=0, column=1, sticky="w", padx=(5, 15))
-        self.macro_dept_combo.bind("<<ComboboxSelected>>", self.update_sub_depts)
+        self.macro_dept_combo.bind("<<ComboboxSelected>>", self.update_sub_depts_and_grades)
         
         tk.Label(self.filter_grid, text="所属名称(学科等):", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=0, column=2, sticky="w", pady=4)
         self.sub_dept_var = tk.StringVar()
-        self.sub_dept_combo = ttk.Combobox(self.filter_grid, textvariable=self.sub_dept_var, state="readonly", width=25, font=("メイリオ", 9))
+        self.sub_dept_combo = ttk.Combobox(self.filter_grid, textvariable=self.sub_dept_var, state="readonly", width=42, font=("メイリオ", 9)) # 幅を拡張
         self.sub_dept_combo.grid(row=0, column=3, sticky="w", padx=5)
         
-        # 納付回数
-        tk.Label(self.filter_grid, text="納付回数:", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=1, column=0, sticky="w", pady=8)
+        # 2段目：学年、納付回数、制度種別
+        tk.Label(self.filter_grid, text="対象学年:", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=1, column=0, sticky="w", pady=8)
+        self.grade_var = tk.StringVar()
+        self.grade_combo = ttk.Combobox(self.filter_grid, textvariable=self.grade_var, state="readonly", width=6, font=("メイリオ", 9))
+        self.grade_combo.grid(row=1, column=1, sticky="w", padx=5)
+
+        tk.Label(self.filter_grid, text="納付回数:", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=1, column=2, sticky="w", pady=8)
         self.pay_count_var = tk.StringVar()
-        self.pay_count_entry = tk.Entry(self.filter_grid, textvariable=self.pay_count_var, width=6, font=("Arial", 10))
-        self.pay_count_entry.grid(row=1, column=1, sticky="w", padx=5)
+        self.pay_count_entry = tk.Entry(self.filter_grid, textvariable=self.pay_count_var, width=8, font=("Arial", 10))
+        self.pay_count_entry.grid(row=1, column=3, sticky="w", padx=5)
         
-        # 通常/修学支援
-        tk.Label(self.filter_grid, text="制度種別:", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=1, column=2, sticky="w", pady=8)
+        # 通常/修学支援 (位置調整)
+        self.support_frame_inner = tk.Frame(self.filter_grid, bg="#fbfbfb")
+        self.support_frame_inner.grid(row=1, column=3, sticky="e", padx=(120, 0))
+        tk.Label(self.support_frame_inner, text="制度種別:", font=("メイリオ", 9, "bold"), bg="#fbfbfb").pack(side="left", padx=(0, 5))
         self.support_type_var = tk.StringVar(value="通常")
-        self.rad_normal = tk.Radiobutton(self.filter_grid, text="通常", variable=self.support_type_var, value="通常", font=("メイリオ", 9), bg="#fbfbfb")
-        self.rad_support = tk.Radiobutton(self.filter_grid, text="修学支援", variable=self.support_type_var, value="修学支援", font=("メイリオ", 9), bg="#fbfbfb")
-        self.rad_normal.grid(row=1, column=3, sticky="w", padx=(5, 15))
-        self.rad_support.grid(row=1, column=3, sticky="w", padx=(70, 0))
+        self.rad_normal = tk.Radiobutton(self.support_frame_inner, text="通常", variable=self.support_type_var, value="通常", font=("メイリオ", 9), bg="#fbfbfb")
+        self.rad_support = tk.Radiobutton(self.support_frame_inner, text="修学支援", variable=self.support_type_var, value="修学支援", font=("メイリオ", 9), bg="#fbfbfb")
+        self.rad_normal.pack(side="left", padx=5)
+        self.rad_support.pack(side="left", padx=5)
 
         # 3. アップロード用ファイル生成エリア
         self.group2_label = tk.Label(self.main_container, text="2. アップロード用ファイル生成", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
@@ -225,11 +244,19 @@ class App:
             else:
                 self.group2_label.configure(text="2. アップロード用ファイル生成")
 
-    def update_sub_depts(self, event=None):
+    def update_sub_depts_and_grades(self, event=None):
         macro = self.macro_dept_var.get()
         if macro in DEPT_MASTER:
+            # 中分類リストの更新
             self.sub_dept_combo.configure(values=DEPT_MASTER[macro])
             self.sub_dept_combo.set("") 
+            
+            # 学年リストの切り替え（学部なら1-4、それ以外は1-2）
+            if macro == "学部":
+                self.grade_combo.configure(values=["1", "2", "3", "4"])
+            else:
+                self.grade_combo.configure(values=["1", "2"])
+            self.grade_combo.set("") 
 
     def draw_canvas_border(self):
         self.drop_canvas.delete("border")
@@ -375,11 +402,15 @@ class App:
     def process_verification_data(self):
         try:
             target_sub_dept = self.sub_dept_var.get()
+            target_grade = self.grade_var.get()
             target_pay_count = self.pay_count_var.get().strip()
             target_type = self.support_type_var.get()
             
             if not target_sub_dept:
                 messagebox.showwarning("警告", "所属名称(学科等)を選択してください。")
+                return
+            if not target_grade:
+                messagebox.showwarning("警告", "対象学年を選択してください。")
                 return
             if not target_pay_count:
                 messagebox.showwarning("警告", "納付回数を入力してください。")
@@ -391,8 +422,11 @@ class App:
             df_src.columns = [str(c).strip() for c in df_src.iloc[0]]
             df_data = df_src.iloc[1:].copy()
 
-            # フィルタリング
+            # フィルタリング処理
             df_data = df_data[df_data["所属名称"].astype(str).str.strip() == target_sub_dept]
+            
+            df_data["temp_grade"] = df_data["学年１"].astype(str).str.split('.').str[0].str.strip()
+            df_data = df_data[df_data["temp_grade"] == target_grade]
             
             df_data["temp_pay_count"] = df_data["学生納付情報.納付回数"].astype(str).str.split('.').str[0].str.strip()
             df_data = df_data[df_data["temp_pay_count"] == target_pay_count]
@@ -468,7 +502,7 @@ class App:
                 worksheet.write(summary_row, 2, unique_student_count, data_format)
 
                 for col_idx, col_name in enumerate(headers):
-                    if col_idx >= 9: worksheet.set_column(col_idx, col_idx, 14)
+                    if col_idx >= 10: worksheet.set_column(col_idx, col_idx, 14)
                     else:
                         max_len = max(df_result[col_name].astype(str).map(len).max() if not df_result.empty else 0, len(col_name)) + 3
                         worksheet.set_column(col_idx, col_idx, min(max_len, 30))
