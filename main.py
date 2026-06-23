@@ -12,18 +12,17 @@ from tkinterdnd2 import TkinterDnD, DND_FILES
 ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
-# 所属マスター定義（正式名称にアップデート）
+# 所属マスター定義（ご提示のテキストを一字一句完全に反映）
 DEPT_MASTER = {
     "大学院": [
         "日本栄養大学大学院栄養学研究科栄養学専攻修士課程",
         "日本栄養大学大学院栄養学研究科保健学専攻修士課程",
         "日本栄養大学大学院栄養学研究科栄養学専攻博士後期課程",
-        "日本栄養大学大学院栄養学研究科保健学専攻博士後期課程",
         "日本栄養大学大学院栄養学研究科大学院研究生"
     ],
     "学部": [
         "日本栄養大学栄養学部 実践栄養学科",
-        "日本栄養大学栄養学部保健栄養学科 イノベーション専攻",
+        "日本栄養大学栄養学部保健栄養学科 栄養イノベーション専攻",
         "日本栄養大学栄養学部保健栄養学科 栄養科学専攻",
         "日本栄養大学栄養学部保健栄養学科 保健養護専攻",
         "日本栄養大学栄養学部 食文化栄養学科",
@@ -35,10 +34,10 @@ DEPT_MASTER = {
         "日本栄養大学短期大学部科目等履修生"
     ],
     "専門学校": [
-        "香川調理製菓専門学校調理専門課程調理師科",
-        "香川調理製菓専門学校調理専門課程調理師科テクニックコース",
+        "香川調理製菓専門学校調理専門課程調理マイスター科",
         "香川調理製菓専門学校調理専門課程製菓科",
-        "香川調理製菓専門学校調理専門課程調理マイスター科"
+        "香川調理製菓専門学校調理専門課程調理師科",
+        "香川調理製菓専門学校調理専門課程調理師科テクニックコース"
     ]
 }
 
@@ -95,7 +94,7 @@ class App:
     def __init__(self):
         self.root = TkinterDnD.Tk()
         self.root.title("CPからedufeeへ変換")
-        self.root.geometry("760x520") # 長い正式名称が表示しやすいように幅を少し広げました
+        self.root.geometry("760x520") 
         self.root.resizable(False, False)
         self.root.configure(bg="#fbfbfb") 
         self.file_path = ""
@@ -173,7 +172,7 @@ class App:
         self.v_filter_label = tk.Label(self.verification_filter_frame, text="2. 出力条件の設定", font=("メイリオ", 12, "bold"), bg="#fbfbfb", fg="#000000")
         self.v_filter_label.pack(anchor="w", pady=(5, 2))
         
-        # 条件入力コンテナ (Grid配置を1列ずつの縦並びベースに調整して見やすくしました)
+        # 条件入力コンテナ
         self.filter_grid = tk.Frame(self.verification_filter_frame, bg="#fbfbfb")
         self.filter_grid.pack(fill="x", padx=10, pady=2)
         
@@ -186,7 +185,7 @@ class App:
         
         tk.Label(self.filter_grid, text="所属名称(学科等):", font=("メイリオ", 9, "bold"), bg="#fbfbfb").grid(row=0, column=2, sticky="w", pady=4)
         self.sub_dept_var = tk.StringVar()
-        self.sub_dept_combo = ttk.Combobox(self.filter_grid, textvariable=self.sub_dept_var, state="readonly", width=42, font=("メイリオ", 9)) # 幅を拡張
+        self.sub_dept_combo = ttk.Combobox(self.filter_grid, textvariable=self.sub_dept_var, state="readonly", width=42, font=("メイリオ", 9))
         self.sub_dept_combo.grid(row=0, column=3, sticky="w", padx=5)
         
         # 2段目：学年、納付回数、制度種別
@@ -200,7 +199,7 @@ class App:
         self.pay_count_entry = tk.Entry(self.filter_grid, textvariable=self.pay_count_var, width=8, font=("Arial", 10))
         self.pay_count_entry.grid(row=1, column=3, sticky="w", padx=5)
         
-        # 通常/修学支援 (位置調整)
+        # 通常/修学支援
         self.support_frame_inner = tk.Frame(self.filter_grid, bg="#fbfbfb")
         self.support_frame_inner.grid(row=1, column=3, sticky="e", padx=(120, 0))
         tk.Label(self.support_frame_inner, text="制度種別:", font=("メイリオ", 9, "bold"), bg="#fbfbfb").pack(side="left", padx=(0, 5))
@@ -220,7 +219,6 @@ class App:
         self.run_btn = tk.Button(self.control_frame, text="📄    変換実行", font=("メイリオ", 13, "bold"), bg="#22863a", fg="#ffffff", relief="raised", bd=1, activebackground="#1b5e20", activeforeground="#ffffff", command=self.process_data)
         self.run_btn.pack(fill="both", expand=True, padx=2, pady=2, ipady=6)
 
-        # 初期配置制御の実行
         self.change_tab(self.current_tab)
 
     def change_tab(self, selected_tab):
@@ -247,11 +245,9 @@ class App:
     def update_sub_depts_and_grades(self, event=None):
         macro = self.macro_dept_var.get()
         if macro in DEPT_MASTER:
-            # 中分類リストの更新
             self.sub_dept_combo.configure(values=DEPT_MASTER[macro])
             self.sub_dept_combo.set("") 
             
-            # 学年リストの切り替え（学部なら1-4、それ以外は1-2）
             if macro == "学部":
                 self.grade_combo.configure(values=["1", "2", "3", "4"])
             else:
