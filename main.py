@@ -374,7 +374,7 @@ class App:
             for i in range(1, 11):
                 code_col = f"明細コード{i}"
                 amt_col = f"明細金額{i}"
-                if code_col in df_final.columns and amt_col in df_final.columns:
+                if code_col in df_final.columns && amt_col in df_final.columns:
                     mask = df_final[code_col].notna() & (df_final[code_col].astype(str).str.strip() != "") & (df_final[amt_col].isna() | (df_final[amt_col].astype(str).str.strip() == ""))
                     df_final.loc[mask, amt_col] = 0
 
@@ -415,40 +415,39 @@ class App:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # 🛠️ ヘッダーの表記揺れ（全角・半角・スペース）を吸収する超強力な自動判定処理
-            raw_headers = [str(c).strip() for c in df_src.iloc[0]]
-            
-            # 学年の列を検索（「学年１」でも「学年1」でも「学年 1」でも一致させる）
+            # 🛠️ 1行目を明示的に「ヘッダー」として割り当てるように修正
+            df_src.columns = [str(c).strip() for c in df_src.iloc[0]]
+            df_data = df_src.iloc[1:].copy()
+
+            # 🛠️ 表記揺れ（全角・半角・スペース）を完全に吸収して列名を特定
+            raw_headers = list(df_data.columns)
             grade_col_name = None
             for h in raw_headers:
                 normalized_h = h.replace(' ', '').replace(' ', '').replace('１', '1')
                 if normalized_h == "学年1":
                     grade_col_name = h
                     break
-            
-            # 万が一見つからなかった場合の安全ガード
-            if grade_col_name is None:
-                grade_col_name = "学年１" if "学年１" in raw_headers else (raw_headers[7] if len(raw_headers) > 7 else "学年１")
+            if grade_col_name is None: grade_col_name = "学年１"
 
-            df_src.columns = raw_headers
-            df_data = df_src.iloc[1:].copy()
-
-            # フィルタリング処理
+            # --- フィルタリング処理 ---
+            # 条件1: 所属名称
             df_data = df_data[df_data["所属名称"].astype(str).str.strip() == target_sub_dept]
             
-            # 🛠️ 自動判定した学年列名を使って比較
+            # 条件2: 学年
             df_data["temp_grade"] = df_data[grade_col_name].astype(str).str.split('.').str[0].str.strip()
             df_data = df_data[df_data["temp_grade"] == target_grade]
             
+            # 条件3: 納付回数
             df_data["temp_pay_count"] = df_data["学生納付情報.納付回数"].astype(str).str.split('.').str[0].str.strip()
             df_data = df_data[df_data["temp_pay_count"] == target_pay_count]
             
+            # 条件4: 制度種別 (通常/修学支援)
             if target_type == "修学支援":
                 df_data = df_data[df_data["納付回数名称"].astype(str).str.contains("修学支援", na=False)]
             else:
                 df_data = df_data[~df_data["納付回数名称"].astype(str).str.contains("修学支援", na=False)]
 
-            df_data = df_data[df_data["学生納付情報.消込日"].isna() | (df_data["学生納付情報.消込日"].astype(str).str.strip() == "")]
+            # 🛠️ 【仕様変更】実務の利便性を考慮し、「消込日」による制限（未納者のみ）を解除。入金済みも含め条件一致者を全員出します。
 
             if df_data.empty:
                 messagebox.showinfo("情報", "該当するデータが見つかりませんでした。条件を確認してください。")
@@ -457,18 +456,18 @@ class App:
             fee_cols = list(df_src.columns[26:])
             active_fee_cols = []
             for col in fee_cols:
-                series = df_data[col].dropna().astype(str).str.strip()
-                series = series[series != ""]
-                if not series.empty:
-                    active_fee_cols.append(col)
+                if col in df_data.columns:
+                    series = df_data[col].dropna().astype(str).str.strip()
+                    series = series[series != ""].replace('nan', '')
+                    if not series.empty and not (series == "0").all():
+                        active_fee_cols.append(col)
 
-            # 出力ヘッダーには「学年１」を採用
             keep_base_cols = [
                 "学籍番号", "氏名", "在学区分名称", "所属名称", grade_col_name, 
                 "学生納付情報.納付回数", "学生納付情報.納付金額", "学生納付情報.納期", "学生納付情報.延納期限"
             ]
             
-            final_cols = keep_base_cols + active_fee_cols
+            final_cols = [c for c in keep_base_cols if c in df_data.columns] + active_fee_cols
             df_result = df_data[final_cols].copy()
 
             rename_map = {
@@ -501,14 +500,14 @@ class App:
                         val = df_result.iloc[row_idx - 1][col_name]
                         
                         if col_name == "納付金額" or col_name in active_fee_cols:
-                            if pd.notna(val) and str(val).strip() != "":
+                            if pd.notna(val) and str(val).strip() != "" and str(val).strip() != "nan":
                                 try: worksheet.write_number(row_idx, col_idx, float(val), comma_format)
                                 except ValueError: worksheet.write(row_idx, col_idx, val, data_format)
                             else: worksheet.write(row_idx, col_idx, "", data_format)
                         elif col_name == "学籍番号":
                             worksheet.write(row_idx, col_idx, str(val) if pd.notna(val) else "", string_format)
                         else:
-                            worksheet.write(row_idx, col_idx, val if pd.notna(val) else "", data_format)
+                            worksheet.write(row_idx, col_idx, val if pd.notna(val) and str(val) != "nan" else "", data_format)
 
                 summary_row = len(df_result) + 2
                 worksheet.write(summary_row, 1, "ユニーク人数合計", data_format)
@@ -673,12 +672,16 @@ class App:
     def load_source_file(self):
         df = None
         try:
-            df = pd.read_csv(self.file_path, header=None, encoding="cp932")
+            # 🛠️ 読み込み時にヘッダーを自動識別して設定するように安定化
+            df = pd.read_csv(self.file_path, encoding="utf-8")
         except Exception:
             try:
-                df = pd.read_excel(self.file_path, header=None)
+                df = pd.read_csv(self.file_path, encoding="cp932")
             except Exception:
-                df = pd.read_csv(self.file_path, header=None, encoding="utf-8")
+                try:
+                    df = pd.read_excel(self.file_path)
+                except Exception:
+                    df = pd.read_csv(self.file_path, header=None)
         return df
 
     def get_save_path(self, suffix):
