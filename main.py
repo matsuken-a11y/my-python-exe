@@ -12,7 +12,7 @@ from tkinterdnd2 import TkinterDnD, DND_FILES
 ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
-# 所属マスター定義（ご提示のテキストを一字一句完全に反映）
+# 所属マスター定義
 DEPT_MASTER = {
     "大学院": [
         "日本栄養大学大学院栄養学研究科栄養学専攻修士課程",
@@ -41,7 +41,7 @@ DEPT_MASTER = {
     ]
 }
 
-# 費目変換マップ（明細コード用：徴収情報・分納情報共通）
+# 費目変換マップ
 CONVERSION_MAP = {
     "授業料": "01", "In enrollment fee": "02", "在籍料": "02", "抗体検査費": "04", "聴講料": "07", "入学金": "08",
     "登録料": "09", "実験実習教育研究費": "10", "調理学実習費": "13", "調理実習費 ": "14",
@@ -415,13 +415,29 @@ class App:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            df_src.columns = [str(c).strip() for c in df_src.iloc[0]]
+            # 🛠️ ヘッダーの表記揺れ（全角・半角・スペース）を吸収する超強力な自動判定処理
+            raw_headers = [str(c).strip() for c in df_src.iloc[0]]
+            
+            # 学年の列を検索（「学年１」でも「学年1」でも「学年 1」でも一致させる）
+            grade_col_name = None
+            for h in raw_headers:
+                normalized_h = h.replace(' ', '').replace(' ', '').replace('１', '1')
+                if normalized_h == "学年1":
+                    grade_col_name = h
+                    break
+            
+            # 万が一見つからなかった場合の安全ガード
+            if grade_col_name is None:
+                grade_col_name = "学年１" if "学年１" in raw_headers else (raw_headers[7] if len(raw_headers) > 7 else "学年１")
+
+            df_src.columns = raw_headers
             df_data = df_src.iloc[1:].copy()
 
             # フィルタリング処理
             df_data = df_data[df_data["所属名称"].astype(str).str.strip() == target_sub_dept]
             
-            df_data["temp_grade"] = df_data["学年１"].astype(str).str.split('.').str[0].str.strip()
+            # 🛠️ 自動判定した学年列名を使って比較
+            df_data["temp_grade"] = df_data[grade_col_name].astype(str).str.split('.').str[0].str.strip()
             df_data = df_data[df_data["temp_grade"] == target_grade]
             
             df_data["temp_pay_count"] = df_data["学生納付情報.納付回数"].astype(str).str.split('.').str[0].str.strip()
@@ -446,8 +462,9 @@ class App:
                 if not series.empty:
                     active_fee_cols.append(col)
 
+            # 出力ヘッダーには「学年１」を採用
             keep_base_cols = [
-                "学籍番号", "氏名", "在学区分名称", "所属名称", "学年１", 
+                "学籍番号", "氏名", "在学区分名称", "所属名称", grade_col_name, 
                 "学生納付情報.納付回数", "学生納付情報.納付金額", "学生納付情報.納期", "学生納付情報.延納期限"
             ]
             
@@ -455,7 +472,7 @@ class App:
             df_result = df_data[final_cols].copy()
 
             rename_map = {
-                "在学区分名称": "区分", "所属名称": "所属", "学年１": "学年", 
+                "在学区分名称": "区分", "所属名称": "所属", grade_col_name: "学年", 
                 "学生納付情報.納付回数": "納付回数", "学生納付情報.納付金額": "納付金額", 
                 "学生納付情報.納期": "納期", "学生納付情報.延納期限": "延納期限"
             }
