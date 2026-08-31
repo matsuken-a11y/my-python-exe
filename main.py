@@ -564,10 +564,10 @@ class App:
             if len(df_src.columns) > 13:
                 df_out["年度"] = df_src[13]
 
-            # 3. 徴収名目コード (C列 / index 2) -> 固定コード "01"
+            # 3. 徴収名目コード (D列 / index 3) -> ここに適切なコード（例: "01" 等）を設定
             df_out["徴収名目コード"] = "01"
 
-            # 4. 徴収種別コード (D列 / index 3) と 分納回数 (E列 / index 4) のマッピング
+            # 4. 徴収種別コード (C列 / index 2) と 分納回数 (E列 / index 4) のマッピング
             if len(df_src.columns) > 14:
                 raw_d = df_src[14].astype(str).str.split('.').str[0].str.strip()
                 
@@ -603,6 +603,7 @@ class App:
                     new_d_list.append(d_val)
                     new_e_list.append(e_val if e_val != "" else None)
                 
+                # C列に徴収種別コード、D列の名目コード("01")と住み分け
                 df_out["徴収種別コード"] = new_d_list
                 df_out["分納回数"] = new_e_list
 
