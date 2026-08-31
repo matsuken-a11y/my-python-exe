@@ -551,13 +551,11 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-    def process_syuunou_data(self):
+def process_syuunou_data(self):
         try:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
 
-            # 処理用DataFrameを作成 (インデックスや列の位置はVBAのマクロロジックに対応)
-            # A列(学籍番号), B列(年度: 元データN列=13番目), C列("01"), D列(徴収種別コード: 元データO列=14番目), E列(分納回数), F列(支払状況), G列(支払日: 元データW列=22番目), H列(支払者ユーザーID: 未使用or必要に応じて)
             max_len = len(df_src)
             df_out = pd.DataFrame(index=range(max_len), columns=SYUUNOU_HEADERS)
 
@@ -568,10 +566,10 @@ class App:
             if len(df_src.columns) > 13:
                 df_out["年度"] = df_src[13]
 
-            # 3. 支払状況 (C列相当 -> 固定 "01")
-            df_out["支払状況"] = "01"
+            # 3. 徴収名目コード (C列 / index 2) -> ここに適切なコード（例: "01" 等）を設定
+            df_out["徴収名目コード"] = "01"
 
-            # 4. 徴収種別コード (O列 -> index 14) と 分納回数 (E列) のマッピング
+            # 4. 徴収種別コード (D列 / index 3) と 分納回数 (E列 / index 4) のマッピング
             if len(df_src.columns) > 14:
                 raw_d = df_src[14].astype(str).str.split('.').str[0].str.strip()
                 
@@ -582,7 +580,6 @@ class App:
                     d_val = ""
                     e_val = ""
                     
-                    # 分納回数・種別のE列自動割り当て
                     if val_o in ["20", "21", "22", "23", "24"]:
                         d_val = "01"
                         if val_o == "20": e_val = "01"
@@ -598,7 +595,6 @@ class App:
                         elif val_o == "33": e_val = "04"
                         elif val_o == "34": e_val = "05"
                     else:
-                        # 通常の置換ルール (Select Case変換)
                         mapping = {
                             "1": "01", "3": "03", "11": "11", "8": "08", "9": "08",
                             "20": "01", "21": "01", "22": "01", "23": "01", "24": "01",
@@ -612,7 +608,7 @@ class App:
                 df_out["徴収種別コード"] = new_d_list
                 df_out["分納回数"] = new_e_list
 
-            # 5. 支払日 (W列 -> index 22)
+            # 5. 支払日 (W列 -> index 22) と 支払状況 (F列 / index 5)
             parsed_dates = []
             f_col_vals = []
             if len(df_src.columns) > 22:
@@ -622,7 +618,7 @@ class App:
                         try:
                             dt = datetime.strptime(val_str, "%Y%m%d")
                             parsed_dates.append(dt.date())
-                            f_col_vals.append(1)  # G列に値があればF列に1
+                            f_col_vals.append(1)
                         except ValueError:
                             parsed_dates.append(None)
                             f_col_vals.append(None)
@@ -630,12 +626,11 @@ class App:
                         parsed_dates.append(None)
                         f_col_vals.append(None)
                 df_out["支払日"] = parsed_dates
-                df_out["支払状況"] = f_col_vals  # 一時的にF列代わりのフラグとして利用、ヘッダー定義に合わせる
+                df_out["支払状況"] = f_col_vals
 
-            # DataFrameとして処理対象行（ヘッダー行目以降、index 1〜）を切り出し
             df_final = df_out.iloc[1:].copy()
 
-            # フィルタリング処理（VBAマクロの各種条件削除を再現）
+            # フィルタリング処理（各種条件による削除）
             filtered_rows = []
             today_date = date.today()
             five_days_ago = today_date - timedelta(days=5)
@@ -646,21 +641,21 @@ class App:
                 d_code = str(row["徴収種別コード"]).strip()
                 status_val = row["支払状況"]
 
-                # 1. 支払状況（F列相当）が空ならスキップ（削除）
+                # 支払状況（F列）が空白ならスキップ
                 if pd.isna(status_val) or str(status_val).strip() == "":
                     continue
 
-                # 2. 5日前以前のデータを削除
+                # 5日前以前のデータを削除
                 if isinstance(pay_date, (datetime, date)):
                     p_date = pay_date.date() if isinstance(pay_date, datetime) else pay_date
                     if p_date <= five_days_ago:
                         continue
 
-                # 3. 学籍番号が2631で始まり、徴収種別コードが03の行を削除
+                # 学籍番号が2631始まり、かつ徴収種別コードが03の行を削除
                 if student_id.startswith("2631") and d_code == "03":
                     continue
 
-                # 4. 指定された除外コード (2, 4, 5, 6, 7, 8, 9, 10, 12, 08) の削除
+                # 指定された不要コードの除外
                 if d_code in ["2", "4", "5", "6", "7", "8", "9", "10", "12", "08"]:
                     continue
 
@@ -671,10 +666,7 @@ class App:
             else:
                 df_final = pd.DataFrame(columns=SYUUNOU_HEADERS)
 
-            # 再インデックスと型整理
             df_final.reset_index(drop=True, inplace=True)
-            
-            # 支払状況（F列）を正規の「1」に戻す（元データ有効行）
             df_final["支払状況"] = 1
 
             numeric_cols = ["学籍番号", "年度"]
