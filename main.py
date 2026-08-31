@@ -200,13 +200,11 @@ class App:
         # 収納情報アップロードタブの場合、ファイルが未選択ならサーバー上のデフォルトパスを自動探索を試みる
         if self.current_tab == "収納情報アップロード" and not self.file_path:
             base_path = r"\\jnas09-001\学納金\05.業務\学費決済システム\【システム用】収納情報アップロード_CP⇒edufee\CPから抽出"
-            # 午前/午後を簡易判定（AM/PM）
             zenhan = "午前" if datetime.now().hour < 12 else "午後"
             default_target = os.path.join(base_path, f"{datetime.now().strftime('%Y%m%d')}_{zenhan}.csv")
             if os.path.exists(default_target):
                 self.file_path = default_target
             else:
-                # 見つからない場合はファイル選択ダイアログを促す
                 self.browse_file()
                 if not self.file_path:
                     return
@@ -551,7 +549,7 @@ class App:
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
-def process_syuunou_data(self):
+    def process_syuunou_data(self):
         try:
             df_src = self.load_source_file()
             if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
@@ -566,7 +564,7 @@ def process_syuunou_data(self):
             if len(df_src.columns) > 13:
                 df_out["年度"] = df_src[13]
 
-            # 3. 徴収名目コード (C列 / index 2) -> ここに適切なコード（例: "01" 等）を設定
+            # 3. 徴収名目コード (C列 / index 2) -> 固定コード "01"
             df_out["徴収名目コード"] = "01"
 
             # 4. 徴収種別コード (D列 / index 3) と 分納回数 (E列 / index 4) のマッピング
