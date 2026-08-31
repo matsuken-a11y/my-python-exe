@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import customtkinter as ctk
@@ -29,7 +29,7 @@ CONVERSION_MAP = {
     "香川調理製菓専門学校特待生": "59", "栄大スカラシップ制度": "60", "北郁子奨学基金奨学金": "61",
     "浅野嘉久賞奨学金": "62", "香川綾・芳子奨励賞": "63", "岡本萌実記念奨学金": "64",
     "野口医学研究所奨学金": "65", "荒井慶子ｸﾞﾛｰﾊﾞﾙ人材育成奨学金": "66", "私費外国人留学生奨学金制度": "67",
-    "食育ｲﾝｽﾄラクタ―受験料等": "77", "日本語学校費用": "78", "教職員子女減免": "81",
+    "食育ｲﾝｽﾄﾗｸﾀ―受験料等": "77", "日本語学校費用": "78", "教職員子女減免": "81",
     "修学支援新制度": "83", "保護者会費": "85", "研修親睦・入卒費": "88",
     "資格申請・受験・検定費": "89", "預り金": "90", "仮受金収入": "91"
 }
@@ -62,11 +62,16 @@ STUDENT_HEADERS = [
     "学費支払者\nユーザーID", "ログイン\nユーザーID", "パスワード", "メールアドレス"
 ]
 
+# ④ 収納情報アップロード用のヘッダー定義
+SYUUNOU_HEADERS = [
+    "学籍番号", "年度", "徴収種別コード", "徴収名目コード", "分納回数", "支払状況", "支払日", "支払者ユーザーID"
+]
+
 class App:
     def __init__(self):
         self.root = TkinterDnD.Tk()
         self.root.title("CPからedufeeへ変換")
-        self.root.geometry("720x390") 
+        self.root.geometry("820x390") 
         self.root.resizable(False, False)
         self.root.configure(bg="#fbfbfb") 
         self.file_path = ""
@@ -78,14 +83,14 @@ class App:
         self.tab_frame.pack_propagate(False)
 
         self.tab_buttons = {}
-        tabs = ["新規・学年変換", "確認用出力", "徴収情報変換", "分納情報変換"]
+        tabs = ["新規・学年変換", "確認用出力", "徴収情報変換", "分納情報変換", "収納情報アップロード"]
         
         for tab in tabs:
             is_active = (tab == self.current_tab)
             btn = tk.Button(
-                self.tab_frame, text=tab, font=("メイリオ", 11, "bold" if is_active else "normal"),
+                self.tab_frame, text=tab, font=("メイリオ", 10, "bold" if is_active else "normal"),
                 bg="#0066cc" if is_active else "#f0f0f0", fg="#ffffff" if is_active else "#000000",
-                relief="flat", bd=0, width=16, activebackground="#0055aa", activeforeground="#ffffff",
+                relief="flat", bd=0, width=15, activebackground="#0055aa", activeforeground="#ffffff",
                 command=lambda t=tab: self.change_tab(t)
             )
             btn.pack(side="left", fill="y")
@@ -104,10 +109,10 @@ class App:
         self.drop_canvas.bind("<Configure>", lambda e: self.draw_canvas_border())
         
         self.icon_label = tk.Label(self.drop_canvas, text="[CSV / Excel]", font=("Arial", 12, "bold"), fg="#2ea44f", bg="#f5f7f8")
-        self.icon_id = self.drop_canvas.create_window(340, 20, window=self.icon_label)
+        self.icon_id = self.drop_canvas.create_window(390, 20, window=self.icon_label)
         
         self.text_id = self.drop_canvas.create_text(
-            340, 55, text="元データExcel / CSVファイルをここにドラッグ＆ドロップ\n(またはここをクリックしてファイルを選択)",
+            390, 55, text="元データExcel / CSVファイルをここにドラッグ＆ドロップ\n(またはここをクリックしてファイルを選択)",
             font=("メイリオ", 10, "bold"), fill="#333333", justify="center"
         )
         
@@ -150,13 +155,14 @@ class App:
         self.run_btn.pack(fill="both", expand=True, padx=2, pady=2, ipady=6)
 
     def change_tab(self, selected_tab):
-        if selected_tab in ["新規・学年変換", "確認用出力", "徴収情報変換", "分納情報変換"]:
+        tabs_list = ["新規・学年変換", "確認用出力", "徴収情報変換", "分納情報変換", "収納情報アップロード"]
+        if selected_tab in tabs_list:
             self.current_tab = selected_tab
             for tab_name, btn in self.tab_buttons.items():
                 if tab_name == selected_tab:
-                    btn.configure(bg="#0066cc", fg="#ffffff", font=("メイリオ", 11, "bold"))
+                    btn.configure(bg="#0066cc", fg="#ffffff", font=("メイリオ", 10, "bold"))
                 else:
-                    btn.configure(bg="#f0f0f0", fg="#000000", font=("メイリオ", 11, "normal"))
+                    btn.configure(bg="#f0f0f0", fg="#000000", font=("メイリオ", 10, "normal"))
             
             if selected_tab == "新規・学年変換":
                 self.group2_label.configure(text="3. アップロード用ファイル生成")
@@ -191,7 +197,21 @@ class App:
         self.check_icon.configure(text="✔", fg="#2ea44f")
 
     def process_data(self):
-        if not self.file_path:
+        # 収納情報アップロードタブの場合、ファイルが未選択ならサーバー上のデフォルトパスを自動探索を試みる
+        if self.current_tab == "収納情報アップロード" and not self.file_path:
+            base_path = r"\\jnas09-001\学納金\05.業務\学費決済システム\【システム用】収納情報アップロード_CP⇒edufee\CPから抽出"
+            # 午前/午後を簡易判定（AM/PM）
+            zenhan = "午前" if datetime.now().hour < 12 else "午後"
+            default_target = os.path.join(base_path, f"{datetime.now().strftime('%Y%m%d')}_{zenhan}.csv")
+            if os.path.exists(default_target):
+                self.file_path = default_target
+            else:
+                # 見つからない場合はファイル選択ダイアログを促す
+                self.browse_file()
+                if not self.file_path:
+                    return
+
+        if not self.file_path and self.current_tab != "収納情報アップロード":
             messagebox.showwarning("警告", "ファイルを選択してください。")
             return
         
@@ -203,6 +223,8 @@ class App:
             self.process_installment_data()
         elif self.current_tab == "新規・学年変換":
             self.process_student_data()
+        elif self.current_tab == "収納情報アップロード":
+            self.process_syuunou_data()
 
     def save_converted_excel(self, df_final, save_path, string_cols, date_cols, headers_list):
         with pd.ExcelWriter(save_path, engine='xlsxwriter') as writer:
@@ -226,8 +248,11 @@ class App:
                     for row_idx in range(1, len(df_final) + 1):
                         val = df_final.iloc[row_idx - 1][col_name]
                         if pd.notna(val):
-                            fmt = simple_date_format if col_name == "生年月日" else datetime_format
-                            worksheet.write_datetime(row_idx, col_idx, val, fmt)
+                            fmt = simple_date_format if col_name in ["生年月日", "支払日"] else datetime_format
+                            if isinstance(val, (datetime, date)):
+                                worksheet.write_datetime(row_idx, col_idx, val, fmt)
+                            else:
+                                worksheet.write(row_idx, col_idx, val, fmt)
 
     def populate_item_details(self, df_src, df_dest, headers_src, target_start_idx):
         target_cols = [target_start_idx + i*2 for i in range(10)]
@@ -523,6 +548,151 @@ class App:
 
             self.save_converted_excel(df_final, save_path, string_cols, date_cols_to_format, STUDENT_HEADERS)
             messagebox.showinfo("保存完了", f"学生マスタ更新用ファイルの生成が完了しました！\n\n{os.path.basename(save_path)}")
+        except Exception as e:
+            messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
+
+    def process_syuunou_data(self):
+        try:
+            df_src = self.load_source_file()
+            if df_src is None: raise ValueError("ファイルの読み込みに失敗しました。")
+
+            # 処理用DataFrameを作成 (インデックスや列の位置はVBAのマクロロジックに対応)
+            # A列(学籍番号), B列(年度: 元データN列=13番目), C列("01"), D列(徴収種別コード: 元データO列=14番目), E列(分納回数), F列(支払状況), G列(支払日: 元データW列=22番目), H列(支払者ユーザーID: 未使用or必要に応じて)
+            max_len = len(df_src)
+            df_out = pd.DataFrame(index=range(max_len), columns=SYUUNOU_HEADERS)
+
+            # 1. 学籍番号 (A列 -> index 0)
+            df_out["学籍番号"] = df_src[0]
+
+            # 2. 年度 (N列 -> index 13)
+            if len(df_src.columns) > 13:
+                df_out["年度"] = df_src[13]
+
+            # 3. 支払状況 (C列相当 -> 固定 "01")
+            df_out["支払状況"] = "01"
+
+            # 4. 徴収種別コード (O列 -> index 14) と 分納回数 (E列) のマッピング
+            if len(df_src.columns) > 14:
+                raw_d = df_src[14].astype(str).str.split('.').str[0].str.strip()
+                
+                new_d_list = []
+                new_e_list = []
+                
+                for val_o in raw_d:
+                    d_val = ""
+                    e_val = ""
+                    
+                    # 分納回数・種別のE列自動割り当て
+                    if val_o in ["20", "21", "22", "23", "24"]:
+                        d_val = "01"
+                        if val_o == "20": e_val = "01"
+                        elif val_o == "21": e_val = "02"
+                        elif val_o == "22": e_val = "03"
+                        elif val_o == "23": e_val = "04"
+                        elif val_o == "24": e_val = "05"
+                    elif val_o in ["30", "31", "32", "33", "34"]:
+                        d_val = "11"
+                        if val_o == "30": e_val = "01"
+                        elif val_o == "31": e_val = "02"
+                        elif val_o == "32": e_val = "03"
+                        elif val_o == "33": e_val = "04"
+                        elif val_o == "34": e_val = "05"
+                    else:
+                        # 通常の置換ルール (Select Case変換)
+                        mapping = {
+                            "1": "01", "3": "03", "11": "11", "8": "08", "9": "08",
+                            "20": "01", "21": "01", "22": "01", "23": "01", "24": "01",
+                            "30": "11", "31": "11", "32": "11", "33": "11", "34": "11"
+                        }
+                        d_val = mapping.get(val_o, val_o)
+                    
+                    new_d_list.append(d_val)
+                    new_e_list.append(e_val if e_val != "" else None)
+                
+                df_out["徴収種別コード"] = new_d_list
+                df_out["分納回数"] = new_e_list
+
+            # 5. 支払日 (W列 -> index 22)
+            parsed_dates = []
+            f_col_vals = []
+            if len(df_src.columns) > 22:
+                for val in df_src[22]:
+                    val_str = str(val).split('.')[0].strip()
+                    if val_str.isdigit() and len(val_str) == 8:
+                        try:
+                            dt = datetime.strptime(val_str, "%Y%m%d")
+                            parsed_dates.append(dt.date())
+                            f_col_vals.append(1)  # G列に値があればF列に1
+                        except ValueError:
+                            parsed_dates.append(None)
+                            f_col_vals.append(None)
+                    else:
+                        parsed_dates.append(None)
+                        f_col_vals.append(None)
+                df_out["支払日"] = parsed_dates
+                df_out["支払状況"] = f_col_vals  # 一時的にF列代わりのフラグとして利用、ヘッダー定義に合わせる
+
+            # DataFrameとして処理対象行（ヘッダー行目以降、index 1〜）を切り出し
+            df_final = df_out.iloc[1:].copy()
+
+            # フィルタリング処理（VBAマクロの各種条件削除を再現）
+            filtered_rows = []
+            today_date = date.today()
+            five_days_ago = today_date - timedelta(days=5)
+
+            for idx, row in df_final.iterrows():
+                pay_date = row["支払日"]
+                student_id = str(row["学籍番号"]).split('.')[0].strip()
+                d_code = str(row["徴収種別コード"]).strip()
+                status_val = row["支払状況"]
+
+                # 1. 支払状況（F列相当）が空ならスキップ（削除）
+                if pd.isna(status_val) or str(status_val).strip() == "":
+                    continue
+
+                # 2. 5日前以前のデータを削除
+                if isinstance(pay_date, (datetime, date)):
+                    p_date = pay_date.date() if isinstance(pay_date, datetime) else pay_date
+                    if p_date <= five_days_ago:
+                        continue
+
+                # 3. 学籍番号が2631で始まり、徴収種別コードが03の行を削除
+                if student_id.startswith("2631") and d_code == "03":
+                    continue
+
+                # 4. 指定された除外コード (2, 4, 5, 6, 7, 8, 9, 10, 12, 08) の削除
+                if d_code in ["2", "4", "5", "6", "7", "8", "9", "10", "12", "08"]:
+                    continue
+
+                filtered_rows.append(row)
+
+            if filtered_rows:
+                df_final = pd.DataFrame(filtered_rows)
+            else:
+                df_final = pd.DataFrame(columns=SYUUNOU_HEADERS)
+
+            # 再インデックスと型整理
+            df_final.reset_index(drop=True, inplace=True)
+            
+            # 支払状況（F列）を正規の「1」に戻す（元データ有効行）
+            df_final["支払状況"] = 1
+
+            numeric_cols = ["学籍番号", "年度"]
+            for col in numeric_cols:
+                df_final[col] = pd.to_numeric(df_final[col].astype(str).str.strip(), errors='coerce')
+
+            string_cols = ["徴収種別コード", "徴収名目コード", "分納回数", "支払者ユーザーID"]
+            for col in string_cols:
+                if col in df_final.columns:
+                    df_final[col] = df_final[col].map(lambda x: str(x).strip() if pd.notna(x) and str(x).strip() != "None" and str(x).strip() != "" else None)
+
+            date_cols_to_format = ["支払日"]
+
+            save_path = self.get_save_path("_収納情報データ")
+            if not save_path: return
+
+            self.save_converted_excel(df_final, save_path, string_cols, date_cols_to_format, SYUUNOU_HEADERS)
+            messagebox.showinfo("保存完了", f"収納情報アップロード用ファイルの生成が完了しました！\n\n{os.path.basename(save_path)}")
         except Exception as e:
             messagebox.showerror("エラー", f"処理中にエラーが発生しました:\n{str(e)}")
 
