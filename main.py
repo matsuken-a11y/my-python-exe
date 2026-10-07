@@ -286,19 +286,17 @@ class App:
             
             if len(df_src.columns) > 15: df_dest[6] = df_src[15]
 
-        date_cols_to_format = []
-        if len(df_src.columns) > 16:
-            for idx, val in df_src[16].items():
-                val_str = str(val).split('.')[0].strip()
-                if val_str.isdigit() and len(val_str) == 8:
-                    dt = datetime.strptime(val_str, "%Y%m%d")
-                    df_dest.at[idx, 8] = dt.strftime("%Y/%m/%d 23:59")
-                    
-                    df_dest.at[idx, 7] = None  # ← ここを None にする
-                    
-                    df_dest.at[idx, 9] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")
-                else:
-                    df_dest.at[idx, 8] = df_dest.at[idx, 7] = df_dest.at[idx, 9] = None
+            date_cols_to_format = []
+            if len(df_src.columns) > 16:
+                for idx, val in df_src[16].items():
+                    val_str = str(val).split('.')[0].strip()
+                    if val_str.isdigit() and len(val_str) == 8:
+                        dt = datetime.strptime(val_str, "%Y%m%d")
+                        df_dest.at[idx, 8] = dt.strftime("%Y/%m/%d 23:59")
+                        df_dest.at[idx, 7] = None  # 徴収開始日を空欄にする
+                        df_dest.at[idx, 9] = (dt + relativedelta(years=1)).strftime("%Y/%m/%d 23:59")
+                    else:
+                        df_dest.at[idx, 8] = df_dest.at[idx, 7] = df_dest.at[idx, 9] = None
 
             df_dest[10] = df_dest[0].astype(str).map(lambda x: f"000{x.split('.')[0]}" if x and x != "nan" else None)
 
@@ -565,7 +563,7 @@ class App:
             if len(df_src.columns) > 13:
                 df_out["年度"] = df_src[13]
 
-# 3. 徴収種別コード (C列) に固定で "01" を設定
+            # 3. 徴収種別コード (C列) に固定で "01" を設定
             df_out["徴収種別コード"] = "01"
 
             # 4. 徴収名目コード (D列) と 分納回数 (E列) のマッピング
