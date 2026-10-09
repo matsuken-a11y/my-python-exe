@@ -602,7 +602,7 @@ class App:
                     new_d_list.append(d_val)
                     new_e_list.append(e_val if e_val != "" else None)
                 
-                # ★ D列（徴収名目コード）に変換後の値を設定
+                # D列（徴収名目コード）に変換後の値を設定
                 df_out["徴収名目コード"] = new_d_list
                 df_out["分納回数"] = new_e_list
 
@@ -627,6 +627,9 @@ class App:
                 df_out["支払状況"] = f_col_vals
 
             df_final = df_out.iloc[1:].copy()
+
+            # フィルタリング処理（各種条件による削除）
+            filtered_rows = []
 
             for idx, row in df_final.iterrows():
                 pay_date = row["支払日"]
