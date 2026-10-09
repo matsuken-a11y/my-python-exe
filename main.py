@@ -628,11 +628,6 @@ class App:
 
             df_final = df_out.iloc[1:].copy()
 
-            # フィルタリング処理（各種条件による削除）
-            filtered_rows = []
-            today_date = date.today()
-            five_days_ago = today_date - timedelta(days=5)
-
             for idx, row in df_final.iterrows():
                 pay_date = row["支払日"]
                 student_id = str(row["学籍番号"]).split('.')[0].strip()
@@ -642,12 +637,6 @@ class App:
                 # 支払状況（F列）が空白ならスキップ
                 if pd.isna(status_val) or str(status_val).strip() == "":
                     continue
-
-                # 5日前以前のデータを削除
-                if isinstance(pay_date, (datetime, date)):
-                    p_date = pay_date.date() if isinstance(pay_date, datetime) else pay_date
-                    if p_date <= five_days_ago:
-                        continue
 
                 # 学籍番号が2631始まり、かつ徴収種別コードが03の行を削除
                 if student_id.startswith("2631") and d_code == "03":
