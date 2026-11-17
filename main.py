@@ -306,6 +306,9 @@ class App:
             df_final = df_dest.iloc[1:].copy()
             df_final.columns = COLLECTION_HEADERS
 
+            # E列（説明文）に案内文を一括入力
+            df_final["説明文"] = "金額の内訳は、支払画面に進むと確認できます。"
+
             for i in range(1, 11):
                 code_col = f"明細コード{i}"
                 amt_col = f"明細金額{i}"
